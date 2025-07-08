@@ -1,0 +1,55 @@
+// second try:
+// * `@kevinwatt/shell-mcp` should a lot of errors (alert box) at claude desktop
+//   it seems that some important configuration is missing
+// * http is currently _not_ supported with claude desktop (needs some wrapper)
+//   but vs code now include a mcp server (beta)
+// * `@crunchloop/mcp-devcontainers` simple and functional
+// * `podman-mcp-server@latest` simple and functional
+{
+  "mcpServers": {
+    "podman": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "podman-mcp-server@latest"
+      ]
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github",
+        "--token",
+        "github_pat_"
+      ]
+    },
+    "github-action-trigger-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@nextdrive/github-action-trigger-mcp"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "github_pat_"
+      }
+    },
+    "devcontainers": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@crunchloop/mcp-devcontainers"
+      ]
+    },
+    "vscode": {
+      "type": "http",
+      "url": "http://localhost:3000"
+    },
+    "shell": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@kevinwatt/shell-mcp"
+      ]
+    }
+  }
+}

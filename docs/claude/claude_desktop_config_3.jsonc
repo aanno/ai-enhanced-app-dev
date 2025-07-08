@@ -1,0 +1,111 @@
+// third try:
+// * `@modelcontextprotocol/server-filesystem` very spooky and insecure, but at least path could be restricted
+// * `vscode-as-mcp-server` seems to work `better than vscode-mcp-server`
+// * `browser-control`
+//   + for firefox
+//   + only url retrieval and some tab stuff (no debug)
+//   + opened an PR as I had problems building this: https://github.com/vpsone/browser-control-mcp/pull/1
+// * `mcp-memory-service` simple memory with chroma (persistence: sqlite3)
+//   + I could only get the on disk and host variant to work (with gpu support)
+//   + There is also an container image option - but this has proved to be difficult
+//   + Not sure if claude desktop could really take advantage of this
+// * `playwright` goood and simple - seems to be functional
+// * `chrome-mcp-stdio` is `chrome-mcp`
+//   + special setup is needed because claude desktop does not support http
+//   + only url retrieval and some tab stuff (no debug)
+{
+  "mcpServers": {
+    "podman": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "podman-mcp-server@latest"
+      ]
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github",
+        "--token",
+        "github_pat_"
+      ]
+    },
+    "github-action-trigger-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@nextdrive/github-action-trigger-mcp"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "github_pat_"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/stratis/home/tpasch/dev/scm"
+      ]
+    },
+    "vscode-mcp-server": {
+      "command": "npx",
+      "args": [
+        "vscode-mcp-server"
+      ]
+    },
+    "vscode-as-mcp-server": {
+      "command": "npx",
+      "args": [
+        "vscode-as-mcp-server"
+      ]
+    },
+    "devcontainers": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@crunchloop/mcp-devcontainers"
+      ]
+    },
+    "shell": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@kevinwatt/shell-mcp"
+      ]
+    },
+    "memory": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/stratis/home/tpasch/dev/scm/github/mcp-memory-service",
+        "run",
+        "memory"
+      ],
+      "env": {
+        "MCP_MEMORY_CHROMA_PATH": "/stratis/home/tpasch/dev/mcp-memory-service",
+        "MCP_MEMORY_BACKUPS_PATH": "/stratis/home/tpasch/dev/mcp-memory-service/backup"
+      }
+    },
+    "browser-control": {
+      "command": "node",
+      "args": [
+        "/stratis/home/tpasch/dev/scm/github/browser-control-mcp/mcp-server/dist/server.js"
+      ]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ]
+    },
+    "chrome-mcp-stdio": {
+      "command": "npx",
+      "args": [
+        "node",
+        "/stratis/home/tpasch/dev/.local/share/pnpm/global/5/node_modules/mcp-chrome-bridge/dist/mcp/mcp-server-stdio.js"
+      ]
+    }
+  }
+}

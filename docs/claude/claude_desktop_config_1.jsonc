@@ -1,0 +1,47 @@
+// first try, showing npx, node and podman starts
+{
+    "mcpServers": {
+        "podman": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "podman-mcp-server@latest"
+            ]
+        },
+        "vscode": {
+            "type": "http",
+            "url": "http://localhost:3000" // Replace PORT with the actual port used by the MCP server
+        },
+        "github3": {
+            "command": "node",
+            "args": [
+                "/stratis/home/tpasch/dev/node-mcp/node_modules/@modelcontextprotocol/server-github/dist/index.js",
+                "--token",
+                "github_pat"
+            ]
+        },
+        "github2": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@modelcontextprotocol/server-github",
+                "--token",
+                "github_pat"
+            ]
+        },
+        "github4": {
+            "command": "/usr/bin/podman",
+            "args": [
+                "run",
+                "-i",
+                "--rm",
+                "-e",
+                "GITHUB_PERSONAL_ACCESS_TOKEN=github_pat",
+                "docker.io/mcp/github"
+            ],
+            "env": {
+                "GITHUB_PERSONAL_ACCESS_TOKEN": "github_pat"
+            }
+        }
+    }
+}
