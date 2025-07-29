@@ -2,8 +2,8 @@ import pytest
 import asyncio
 import json
 from typing import AsyncIterator, Any
-from mcp.client import Client
-from mcp.types import ToolRequest, ResourceRequest
+from mcp.client.client import Client
+from mcp.types import ToolRequest, ReadResourceRequest
 from mcp_server import create_mcp_server
 
 @pytest.fixture
@@ -25,7 +25,7 @@ async def test_tool_invocation(mcp_server: Any, mcp_client: Client) -> None:
     response = await mcp_client.call_tool(
         ToolRequest(
             to="example:greet",
-            body=bytes(json.dumps({"name": "Alice"}), "utf-8")
+            body=json.dumps({"name": "Alice"}).encode()
         )
     )
     assert b"Hello, Alice" in response.body
@@ -33,9 +33,9 @@ async def test_tool_invocation(mcp_server: Any, mcp_client: Client) -> None:
 @pytest.mark.asyncio
 async def test_resource_request(mcp_server: Any, mcp_client: Client) -> None:
     response = await mcp_client.read_resource(
-        ResourceRequest(
-            method="GET",
-            to="example:data"
+        ReadResourceRequest(
+            resource="example:data",
+            headers={}
         )
     )
     assert b"Resource data" in response.body

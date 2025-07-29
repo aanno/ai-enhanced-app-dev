@@ -1,12 +1,13 @@
 import asyncio
 import contextlib
 import signal
+import json
 from typing import AsyncIterator, Optional, Any, Dict, List
 from types import FrameType
 
-import mcp.types as types
 from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+from mcp.types import ReadResourceRequest, ReadResourceResponse, ToolRequest, ToolResponse
 
 try:
     import coverage
@@ -14,14 +15,14 @@ try:
     HAS_COVERAGE = True
 except ImportError:
     HAS_COVERAGE = False
-    # Coverage = Any  # type: ignore
+    Coverage = Any  # type: ignore
 
 class MyResourceHandler:
-    async def handle_request(self, request: types.ResourceRequest) -> types.ResourceResponse:
-        return types.ResourceResponse(
+    async def handle_request(self, request: ReadResourceRequest) -> ReadResourceResponse:
+        return ReadResourceResponse(
             status=200,
             headers={"Content-Type": "application/json"},
-            body=bytes(json.dumps({"message": "Resource data"}), "utf-8")
+            body=json.dumps({"message": "Resource data"}).encode()
         )
 
 @contextlib.asynccontextmanager
@@ -61,17 +62,17 @@ async def create_mcp_server() -> Server:
     
     # Register tool
     @server.tool("example:greet")
-    async def greet_tool(request: types.ToolRequest) -> types.ToolResponse:
+    async def greet_tool(request: ToolRequest) -> ToolResponse:
         try:
             params = json.loads(request.body.decode())
             name = params.get("name", "World")
-            return types.ToolResponse(
+            return ToolResponse(
                 status=200,
                 headers={},
-                body=bytes(f"Hello, {name}!", "utf-8")
+                body=f"Hello, {name}!".encode()
             )
         except json.JSONDecodeError:
-            return types.ToolResponse(
+            return ToolResponse(
                 status=400,
                 headers={},
                 body=b"Invalid JSON input"
@@ -79,7 +80,7 @@ async def create_mcp_server() -> Server:
 
     # Register resource
     @server.resource("example:data")
-    async def data_resource(request: types.ResourceRequest) -> types.ResourceResponse:
+    async def data_resource(request: ReadResourceRequest) -> ReadResourceResponse:
         handler = MyResourceHandler()
         return await handler.handle_request(request)
 
