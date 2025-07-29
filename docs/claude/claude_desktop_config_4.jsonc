@@ -1,0 +1,130 @@
+{
+  "mcpServers": {
+    // works only if vs code extension acomagu.vscode-as-mcp-server is running
+    // works also with dev containers
+    "vscode-mcp-server": {
+      "command": "npx",
+      "args": [
+        "mcp-remote@next",
+        "http://localhost:3000/mcp"
+      ]
+    },
+    // working only if 'claude mcp serve' is started within container (scripts/mcp-claude-code.sh)
+    "sse-proxy-claude-code": {
+      "command": "uvx",
+      "args": [
+        "mcp-proxy",
+        "http://localhost:3011/sse"
+      ]
+    },
+    // NOT WORKING
+    "claude-code": {
+      "command": "podman",
+      "args": [
+        "exec",
+        "-it",
+        "distracted_haibt",
+        "/home/vscode/.volta/bin/npx",
+        "-y",
+        "supergateway",
+        "--stdio",
+        "\"/home/vscode/.volta/bin/claude mcp serve\"",
+        "--port",
+        "7080",
+        "--baseUrl",
+        "http://localhost:7080",
+        "--ssePath",
+        "/sse",
+        "--messagePath",
+        "/message"
+      ]
+    },
+    // NOT WORKING
+    "claude-code2": {
+      "command": "podman",
+      "args": [
+        "exec",
+        "-it",
+        "distracted_haibt",
+        "/home/vscode/.volta/bin/claude",
+        "mcp",
+        "serve"
+      ]
+    },
+    "sse-vscode": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "supergateway",
+        "--sse",
+        "http://localhost:3000/mcp"
+      ]
+    },
+    "podman": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "podman-mcp-server@latest"
+      ]
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github",
+        "--token",
+        "github_pat_"
+      ]
+    },
+    // NOT WORKING - as extension is disabled in dev container
+    "vscode-as-mcp-server": {
+      "command": "npx",
+      "args": [
+        "vscode-as-mcp-server"
+      ]
+    },
+    "devcontainers": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@crunchloop/mcp-devcontainers"
+      ]
+    },
+    // working only if ./scripts/mcp-memory.sh runs on host
+    "gw-memory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "supergateway",
+        "--sse",
+        "http://localhost:3012/sse"
+      ]
+    },
+    "memory": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/stratis/home/tpasch/dev/scm/github/mcp-memory-service",
+        "run",
+        "memory"
+      ],
+      "env": {
+        "MCP_MEMORY_CHROMA_PATH": "/stratis/home/tpasch/dev/mcp-memory-service",
+        "MCP_MEMORY_BACKUPS_PATH": "/stratis/home/tpasch/dev/mcp-memory-service/backup"
+      }
+    },
+    "browser-control": {
+      "command": "node",
+      "args": [
+        "/stratis/home/tpasch/dev/scm/github/browser-control-mcp/mcp-server/dist/server.js"
+      ]
+    },
+    "chrome-mcp-stdio": {
+      "command": "npx",
+      "args": [
+        "node",
+        "/stratis/home/tpasch/dev/.local/share/pnpm/global/5/node_modules/mcp-chrome-bridge/dist/mcp/mcp-server-stdio.js"
+      ]
+    }
+  }
+}

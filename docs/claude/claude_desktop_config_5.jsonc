@@ -1,0 +1,80 @@
+{
+  "mcpServers": {
+    "cocoindex-rag-2": {
+      "command": "pnpm",
+      "args": [
+        "dlx",
+        "supergateway",
+        "--streamableHttp",
+        "http://localhost:3033/mcp"
+      ]
+    },
+    "vscode-mcp-server": {
+      "command": "pnpm",
+      "args": [
+        "dlx",
+        "mcp-remote@next",
+        "http://localhost:3000/mcp"
+      ]
+    },
+    "sse-proxy-claude-code": {
+      "command": "uvx",
+      "args": [
+        "mcp-proxy",
+        "http://localhost:3011/sse"
+      ]
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ]
+    },
+    "podman": {
+      "command": "pnpm",
+      "args": [
+        "dlx",
+        "podman-mcp-server@latest"
+      ]
+    },
+    "github": {
+      "command": "pnpm",
+      "args": [
+        "dlx",
+        "@modelcontextprotocol/server-github",
+        "--token",
+        "github_pat_"
+      ]
+    },
+    "devcontainers": {
+      "command": "pnpm",
+      "args": [
+        "dlx",
+        "@crunchloop/mcp-devcontainers"
+      ]
+    },
+    "gw-memory": {
+      "command": "pnpm",
+      "args": [
+        "dlx",
+        "supergateway",
+        "--sse",
+        "http://localhost:3012/sse"
+      ]
+    },
+    "browser-control": {
+      "command": "node",
+      "args": [
+        "/stratis/home/tpasch/dev/scm/github/browser-control-mcp/mcp-server/dist/server.js"
+      ]
+    },
+    "chrome-mcp-stdio": {
+      "command": "pnpm",
+      "args": [
+        "dlx",
+        "node",
+        "/stratis/home/tpasch/dev/.local/share/pnpm/global/5/node_modules/mcp-chrome-bridge/dist/mcp/mcp-server-stdio.js"
+      ]
+    }
+  }
+}
