@@ -1,0 +1,40 @@
+__pycache__/
+/quickstart/
+/rust/target/
+/monkeytype.sqlite3
+/out/
+.dmypy.json
+*.pyc
+*.log
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+*.whl
+*.dist-info/
+*.coverage
+*.cache
+*.pytest_cache/
+.venv/
+/.claude/*.local.*
+/eval_CodeEmbedding_*
+/log
+*.log*
+/tests/all_languages_baseline_results.json
+/tests/lang/haskell/haskell_baseline_results.json
+
+# Maturin build artifacts
+*.so
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Test artifacts
+.pytest_cache/
+.coverage*
+htmlcov/
+
+# Python cache
+*.pyo
+*.pywc
