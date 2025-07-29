@@ -1,41 +1,60 @@
 import pytest
 import asyncio
 from typing import AsyncIterator
-from mcp_server.mcp_server import create_mcp_server
-from mcp_client import MCPClient
+from mcp.client import Client
+from mcp.model import ToolInvocation, ResourceRequest
+from mcp_server import create_mcp_server
 
 @pytest.fixture
 async def mcp_server() -> AsyncIterator[Any]:
-    server = await create_mcp_server(port=8002)
+    server = create_mcp_server()
     await server.start('127.0.0.1', 8002)
     yield server
     await server.stop()
 
 @pytest.fixture
-async def mcp_client() -> AsyncIterator[MCPClient]:
-    client = MCPClient(port=8002)
+async def mcp_client() -> AsyncIterator[Client]:
+    client = Client('127.0.0.1', 8002)
     await client.connect()
     yield client
     await client.close()
 
 @pytest.mark.asyncio
-async def test_tool_call(mcp_server: Any, mcp_client: MCPClient) -> None:
-    response = await mcp_client.call_tool("example:greet", b"Bob")
-    assert "Hello, Bob!" in response
+async def test_tool_invocation(mcp_server: Any, mcp_client: Client) -> None:
+    response = await mcp_client.call_tool(
+        ToolInvocation(
+            tool="example:greet",
+            parameters={"name": "Alice"}
+        )
+    )
+    assert "Hello, Alice!" in response.result
 
 @pytest.mark.asyncio
-async def test_resource_read(mcp_server: Any, mcp_client: MCPClient) -> None:
-    response = await mcp_client.read_resource("example:data")
-    assert "Resource data" in response
+async def test_resource_request(mcp_server: Any, mcp_client: Client) -> None:
+    response = await mcp_client.read_resource(
+        ResourceRequest(
+            resource="example:data",
+            parameters={}
+        )
+    )
+    assert response.result["message"] == "Resource data"
 
 @pytest.mark.asyncio
-async def test_list_tools(mcp_server: Any, mcp_client: MCPClient) -> None:
-    tools = await mcp_client.list_tools()
-    assert "example:greet" in tools
+async def test_list_endpoints(mcp_server: Any, mcp_client: Client) -> None:
+    # Test tool listing
+    tools_response = await mcp_client.call_tool(
+        ToolInvocation(
+            tool="mcp:list_tools",
+            parameters={}
+        )
+    )
+    assert "example:greet" in tools_response.result["tools"]
 
-@pytest.mark.asyncio
-async def test_client_server_interaction(mcp_server: Any) -> None:
-    async with MCPClient(port=8002) as client:
-        await client.connect()
-        response = await client.call_tool("example:greet", b"Eve")
-        assert "Hello, Eve!" in response
+    # Test resource listing
+    resources_response = await mcp_client.call_tool(
+        ToolInvocation(
+            tool="mcp:list_resources",
+            parameters={}
+        )
+    )
+    assert "example:data" in resources_response.result["resources"]

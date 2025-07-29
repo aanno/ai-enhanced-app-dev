@@ -1,15 +1,15 @@
 import asyncio
+import json
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
-from mcp.client import Client
-from mcp.message import ToolRequest, ResourceRequest
+from mcp import Client
+from mcp.model import ToolInvocation, ToolResponse, ResourceRequest, ResourceResponse
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.styles import Style
-import json
 from json.decoder import JSONDecodeError
 
 @dataclass
@@ -19,7 +19,7 @@ class ServerInfo:
 
 class MCPShell:
     def __init__(self, host: str = '127.0.0.1', port: int = 8000):
-        self.client = Client(host, port, protocol="streamingHttp")
+        self.client = Client(host, port)
         self.server_info = ServerInfo(tools=[], resources=[])
         self.session = PromptSession(
             history=FileHistory('.mcp_shell_history'),
@@ -44,11 +44,18 @@ class MCPShell:
 
     async def fetch_server_info(self) -> None:
         try:
-            tools_resp = await self.client.call_tool(ToolRequest(to="mcp:list_tools", body=b''))
-            resources_resp = await self.client.call_tool(ToolRequest(to="mcp:list_resources", body=b''))
+            # Using the correct tool invocation format
+            tools_resp = await self.client.call_tool(ToolInvocation(
+                tool="mcp:list_tools",
+                parameters={}
+            ))
+            resources_resp = await self.client.call_tool(ToolInvocation(
+                tool="mcp:list_resources",
+                parameters={}
+            ))
             
-            self.server_info.tools = json.loads(tools_resp.body.decode()).get('tools', [])
-            self.server_info.resources = json.loads(resources_resp.body.decode()).get('resources', [])
+            self.server_info.tools = tools_resp.result.get('tools', [])
+            self.server_info.resources = resources_resp.result.get('resources', [])
         except Exception as e:
             print(f"⚠️  Failed to fetch server info: {e}")
 
@@ -94,7 +101,7 @@ class MCPShell:
         print("  help               - Show this help message")
         print("  exit               - Exit the shell\n")
         print("You can also type tool/resource names directly")
-        print("Example: 'example:greet \"Alice\"'")
+        print("Example: 'example:greet name=\"Alice\"'")
 
     async def cmd_list(self, args: List[str]) -> None:
         """List all available endpoints"""
@@ -113,7 +120,8 @@ class MCPShell:
     async def cmd_call(self, args: List[str]) -> None:
         """Call a tool endpoint"""
         if not args:
-            print("Usage: call <tool> [args]")
+            print("Usage: call <tool> [params]")
+            print("Example: call example:greet name=Alice")
             return
 
         tool_name = args[0]
@@ -122,17 +130,23 @@ class MCPShell:
             return
 
         try:
-            # Join remaining args or use empty string
-            body = ' '.join(args[1:]) if len(args) > 1 else ''
+            # Parse parameters from command line
+            params = {}
+            for arg in args[1:]:
+                if '=' in arg:
+                    key, value = arg.split('=', 1)
+                    params[key] = value
+                else:
+                    params[arg] = True
             
             response = await self.client.call_tool(
-                ToolRequest(
-                    to=tool_name,
-                    body=body.encode()
+                ToolInvocation(
+                    tool=tool_name,
+                    parameters=params
                 )
             )
             
-            self._pretty_print_response(response.body)
+            self._pretty_print_response(response.result)
         except Exception as e:
             print(f"Error calling tool: {e}")
 
@@ -150,28 +164,23 @@ class MCPShell:
         try:
             response = await self.client.read_resource(
                 ResourceRequest(
-                    method="GET",
-                    to=resource_name
+                    resource=resource_name,
+                    parameters={}  # Can add parameters here if needed
                 )
             )
             
-            self._pretty_print_response(response.body)
+            self._pretty_print_response(response.result)
         except Exception as e:
             print(f"Error reading resource: {e}")
 
-    def _pretty_print_response(self, data: bytes) -> None:
+    def _pretty_print_response(self, data: Any) -> None:
         """Pretty print response data"""
-        try:
-            decoded = data.decode()
-            try:
-                # Try to parse as JSON
-                parsed = json.loads(decoded)
-                print(json.dumps(parsed, indent=2))
-            except JSONDecodeError:
-                # Just print as text if not JSON
-                print(decoded)
-        except UnicodeDecodeError:
-            print(f"<binary data {len(data)} bytes>")
+        if isinstance(data, (dict, list)):
+            print(json.dumps(data, indent=2))
+        elif isinstance(data, str):
+            print(data)
+        else:
+            print(str(data))
 
     async def cmd_exit(self, args: List[str]) -> None:
         """Exit the shell"""
