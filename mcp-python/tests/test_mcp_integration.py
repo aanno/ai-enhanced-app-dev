@@ -1,13 +1,14 @@
 import pytest
 import asyncio
-from typing import AsyncIterator
+import json
+from typing import AsyncIterator, Any
 from mcp.client import Client
-from mcp.model import ToolInvocation, ResourceRequest
+from mcp.types import ToolRequest, ResourceRequest
 from mcp_server import create_mcp_server
 
 @pytest.fixture
 async def mcp_server() -> AsyncIterator[Any]:
-    server = create_mcp_server()
+    server = await create_mcp_server()
     await server.start('127.0.0.1', 8002)
     yield server
     await server.stop()
@@ -22,39 +23,39 @@ async def mcp_client() -> AsyncIterator[Client]:
 @pytest.mark.asyncio
 async def test_tool_invocation(mcp_server: Any, mcp_client: Client) -> None:
     response = await mcp_client.call_tool(
-        ToolInvocation(
-            tool="example:greet",
-            parameters={"name": "Alice"}
+        ToolRequest(
+            to="example:greet",
+            body=bytes(json.dumps({"name": "Alice"}), "utf-8")
         )
     )
-    assert "Hello, Alice!" in response.result
+    assert b"Hello, Alice" in response.body
 
 @pytest.mark.asyncio
 async def test_resource_request(mcp_server: Any, mcp_client: Client) -> None:
     response = await mcp_client.read_resource(
         ResourceRequest(
-            resource="example:data",
-            parameters={}
+            method="GET",
+            to="example:data"
         )
     )
-    assert response.result["message"] == "Resource data"
+    assert b"Resource data" in response.body
 
 @pytest.mark.asyncio
 async def test_list_endpoints(mcp_server: Any, mcp_client: Client) -> None:
     # Test tool listing
     tools_response = await mcp_client.call_tool(
-        ToolInvocation(
-            tool="mcp:list_tools",
-            parameters={}
+        ToolRequest(
+            to="mcp:list_tools",
+            body=b""
         )
     )
-    assert "example:greet" in tools_response.result["tools"]
+    assert b"example:greet" in tools_response.body
 
     # Test resource listing
     resources_response = await mcp_client.call_tool(
-        ToolInvocation(
-            tool="mcp:list_resources",
-            parameters={}
+        ToolRequest(
+            to="mcp:list_resources",
+            body=b""
         )
     )
-    assert "example:data" in resources_response.result["resources"]
+    assert b"example:data" in resources_response.body
