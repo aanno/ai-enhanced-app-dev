@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from typing import AsyncIterator
-from mcp_full_server import create_mcp_server
+from mcp_server.mcp_server import create_mcp_server
 from mcp_client import MCPClient
 
 @pytest.fixture

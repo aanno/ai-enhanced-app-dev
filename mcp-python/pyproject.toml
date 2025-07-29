@@ -1,13 +1,13 @@
-[build-system]
-requires = ["maturin>=1.0,<2.0"]
-build-backend = "maturin"
+# [build-system]
+# requires = ["maturin>=1.0,<2.0"]
+# build-backend = "maturin"
 
 [project]
 name = "mcp_python"
 version = "0.1.0"
 description = "basic mcp example with python"
 requires-python = ">=3.11"
-package = { include = ["src/mcp_server/**/*.py"] }
+# package = { include = ["src/mcp_server/**/*.py"] }
 dependencies = [
     "prompt-toolkit>=3.0.0",
     "mcp>=1.12.0"
@@ -34,7 +34,7 @@ build = [
     "auto-type-annotate>=1.1.2",
     # code quality
     "isort>=6.0.1",
-    "autoflake8>=1.7.0",
+    "autoflake8>=0.4.1",
     "autopep8>=2.0.0",
     "flake8>=7.3.0",
     "autopep8>=2.0.0",
