@@ -9,6 +9,7 @@ and provides commands to list tools/resources and call them interactively.
 import asyncio
 import json
 import logging
+import click
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
@@ -320,41 +321,44 @@ class MCPShell:
 
     async def _cmd_exit(self, args: List[str]) -> None:
         """Exit the shell."""
-        print("👋 Goodbye!")
         raise KeyboardInterrupt()
 
 
-async def main():
-    """Main entry point."""
-    import sys
-    
-    # Parse command line arguments
-    server_url = "http://localhost:8001/mcp"
-    if len(sys.argv) > 1:
-        port = int(sys.argv[1])
+@click.command()
+@click.option(
+    '--port', 
+    default=8001, 
+    type=int, 
+    help='Port number of the MCP server to connect to (default: 8001)'
+)
+def main(port: int) -> None:
+    """Interactive MCP client shell for testing MCP servers."""
+    async def run_shell():
         server_url = f"http://localhost:{port}/mcp"
+        
+        print("🚀 MCP Interactive Shell")
+        print(f"Server: {server_url}")
+        print()
+        
+        # Setup logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            handlers=[logging.FileHandler('.mcp_shell.log')]
+        )
+        
+        # Start shell
+        shell = MCPShell(server_url)
+        await shell.connect()
     
-    print("🚀 MCP Interactive Shell")
-    print(f"Server: {server_url}")
-    print()
-    
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.FileHandler('.mcp_shell.log')]
-    )
-    
-    # Start shell
-    shell = MCPShell(server_url)
-    await shell.connect()
-
-
-if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        asyncio.run(run_shell())
     except KeyboardInterrupt:
         print("\n👋 Goodbye!")
     except Exception as e:
         print(f"❌ Fatal error: {e}")
         logging.exception("Fatal error")
+
+
+if __name__ == "__main__":
+    main()

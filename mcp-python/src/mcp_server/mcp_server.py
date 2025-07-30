@@ -4,6 +4,7 @@ import signal
 import json
 import logging
 import anyio
+import click
 from typing import AsyncIterator, Optional, Any, Dict, List
 from types import FrameType
 
@@ -208,10 +209,23 @@ async def run_server(port: int = 8000) -> None:
         if server.started and not server.should_exit:
             await server.shutdown()
 
-if __name__ == "__main__":
+@click.command()
+@click.option(
+    '--port', 
+    default=8001, 
+    type=int, 
+    help='Port number to run the MCP server on (default: 8001)'
+)
+def main(port: int) -> None:
+    """Start the MCP server with coverage support."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     
-    asyncio.run(run_server(port=8001))
+    print(f"🚀 Starting MCP server on port {port}")
+    asyncio.run(run_server(port=port))
+
+
+if __name__ == "__main__":
+    main()
