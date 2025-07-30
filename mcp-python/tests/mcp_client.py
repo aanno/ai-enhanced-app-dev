@@ -13,9 +13,9 @@ class MCPTestClient:
         self.host = host
         self.port = port
         self.server_url = f"http://{host}:{port}/mcp"
-        self.session = None
-        self._client_context = None
-        self._session_context = None
+        self.session: Optional[ClientSession] = None
+        self._client_context: Any = None
+        self._session_context: Optional[ClientSession] = None
 
     async def connect(self):
         """Connect to the MCP server"""
@@ -57,15 +57,17 @@ class MCPTestClient:
         result = await self.session.call_tool(tool_name, params or {})
         
         # Return structured result info
-        response = {
+        response: Dict[str, Any] = {
             "isError": getattr(result, 'isError', False),
             "content": []
         }
         
         if hasattr(result, 'content') and result.content:
-            for content in result.content:
-                if hasattr(content, 'text'):
-                    response["content"].append(content.text)
+            content_list = response["content"]
+            if isinstance(content_list, list):
+                for content in result.content:
+                    if hasattr(content, 'text'):
+                        content_list.append(content.text)
         
         if hasattr(result, 'structuredContent') and result.structuredContent:
             response["structuredContent"] = result.structuredContent

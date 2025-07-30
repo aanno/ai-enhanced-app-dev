@@ -225,7 +225,7 @@ class JSONCompleter(Completer):
 class DynamicMCPCompleter(Completer):
     """Dynamic completer that provides different completions based on context."""
 
-    def __init__(self, shell: 'MCPShell'):
+    def __init__(self, shell: Any):
         self.shell = shell
 
     def get_completions(self, document: Document, complete_event: CompleteEvent):

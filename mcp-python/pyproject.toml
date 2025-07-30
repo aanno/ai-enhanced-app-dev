@@ -109,6 +109,7 @@ max_line_length = 120
 check_untyped_defs = true
 ignore_missing_imports = false
 local_partial_types = false
+# explicit-package-bases = "./src"
 
 # [[tool.mypy.overrides]]
 # module = ["pgvector.*", "mypy-astchunk.*", "astchunk.*"]

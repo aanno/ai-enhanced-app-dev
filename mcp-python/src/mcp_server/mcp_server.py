@@ -353,7 +353,7 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
         }
         greeting_text = greetings.get(language, "Hello")
         
-        response = {
+        response: Dict[str, Any] = {
             "greeting": f"{greeting_text}, {target_name}!",
             "timestamp": datetime.datetime.now().isoformat()
         }
