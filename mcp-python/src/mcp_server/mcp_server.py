@@ -42,6 +42,25 @@ SAMPLE_RESOURCES = {
     },
 }
 
+# Contextual data resource - independent from schemas
+SERVER_STATUS_DATA = {
+    "server": {
+        "name": "mcp-server-with-coverage",
+        "version": "1.0.0",
+        "status": "running",
+        "uptime_seconds": 0,
+        "capabilities": ["tools", "resources", "json_schemas"]
+    },
+    "tools": {
+        "available": ["example:greet", "example:greetingJson"],
+        "total_calls": 0
+    },
+    "resources": {
+        "available": 3,
+        "types": ["text", "schema", "status"]
+    }
+}
+
 # JSON Schemas for tools
 JSON_SCHEMAS = {
     "example:greet:args": {
@@ -217,6 +236,8 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
     # Tool endpoints
     @app.call_tool()
     async def greet_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        import jsonschema
+        
         # Handle various argument types
         target_name = arguments.get("name", "World")
         greeting = arguments.get("greeting", "Hello")
@@ -250,15 +271,27 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
             import datetime
             message_parts.append(f"Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-        return [types.TextContent(
+        result = [types.TextContent(
             type="text",
             text="\n".join(message_parts)
         )]
+        
+        # Validate result against output schema
+        try:
+            result_data = [{"type": "text", "text": result[0].text}]
+            jsonschema.validate(result_data, JSON_SCHEMAS["example:greet:result"])
+        except jsonschema.ValidationError as e:
+            logger.warning(f"Tool result validation failed for example:greet: {e.message}")
+        except Exception as e:
+            logger.warning(f"Result validation error for example:greet: {e}")
+        
+        return result
 
     @app.call_tool()
     async def greetingJson_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
         import datetime
         import json
+        import jsonschema
 
         # Extract arguments
         target_name = arguments.get("name", "World")
@@ -281,10 +314,22 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 "version": "1.0.0"
             }
 
-        return [types.TextContent(
+        result = [types.TextContent(
             type="text",
             text=json.dumps(response, indent=2)
         )]
+        
+        # Validate result against output schema
+        try:
+            # Parse the JSON response to validate its structure
+            parsed_response = json.loads(result[0].text)
+            jsonschema.validate(parsed_response, JSON_SCHEMAS["example:greetingJson:result"])
+        except jsonschema.ValidationError as e:
+            logger.warning(f"Tool result validation failed for example:greetingJson: {e.message}")
+        except Exception as e:
+            logger.warning(f"Result validation error for example:greetingJson: {e}")
+        
+        return result
 
     @app.list_tools()
     async def list_tools() -> List[types.Tool]:
@@ -293,6 +338,7 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 name="example:greet",
                 description="Greet someone with a customizable message in different languages",
                 inputSchema=JSON_SCHEMAS["example:greet:args"],
+                outputSchema=JSON_SCHEMAS["example:greet:result"],
                 # Custom metadata for schema references
                 annotations=types.ToolAnnotations(
                     audience=["developer"],
@@ -308,6 +354,7 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 name="example:greetingJson",
                 description="Greet someone and return structured JSON response",
                 inputSchema=JSON_SCHEMAS["example:greetingJson:args"],
+                outputSchema=JSON_SCHEMAS["example:greetingJson:result"],
                 annotations=types.ToolAnnotations(
                     audience=["developer"],
                     tags=["greeting", "json"]
@@ -334,6 +381,15 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 description=f"A sample text resource named {name}",
                 mimeType="text/plain",
             ))
+        
+        # Add server status resource (contextual data)
+        resources.append(types.Resource(
+            uri=AnyUrl("internal:///server-status"),
+            name="server-status",
+            title="Server Status Information",
+            description="Current server status, uptime, and statistics",
+            mimeType="application/json",
+        ))
 
         # Add JSON schema resources
         for schema_name in JSON_SCHEMAS.keys():
@@ -351,7 +407,20 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
     @app.read_resource()
     async def read_resource(uri: AnyUrl) -> List[ReadResourceContents]:
         import json
+        import time
         uri_str = str(uri)
+
+        # Handle internal:// resources (server status)
+        if uri_str == "internal:///server-status":
+            # Update dynamic data
+            status_data = SERVER_STATUS_DATA.copy()
+            status_data["server"]["uptime_seconds"] = int(time.time()) % 3600  # Simple uptime simulation
+            status_data["timestamp"] = time.time()
+            
+            return [ReadResourceContents(
+                content=json.dumps(status_data, indent=2),
+                mime_type="application/json"
+            )]
 
         # Handle file:// resources
         if uri_str.startswith("file:///"):
@@ -503,6 +572,7 @@ def main(port: int, coverage: bool) -> None:
     try:
         asyncio.run(run_server(port=port, enable_coverage=coverage))
     except KeyboardInterrupt:
+        print("\n🛑 Shutting down server gracefully...")
         print("👋 Server stopped.")
     except Exception as e:
         logger.error(f"Fatal server error: {e}")

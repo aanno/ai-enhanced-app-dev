@@ -569,6 +569,17 @@ class MCPShell:
                     props = list(tool.inputSchema['properties'].keys())
                     if props:
                         print(f"     Available params: {', '.join(props)}")
+            
+            # Show output schema info if available
+            if hasattr(tool, 'outputSchema') and tool.outputSchema:
+                print(f"     📤 Output schema: available")
+                if 'type' in tool.outputSchema:
+                    output_type = tool.outputSchema['type']
+                    print(f"     Returns: {output_type}")
+                    if output_type == 'object' and 'properties' in tool.outputSchema:
+                        required_output = tool.outputSchema.get('required', [])
+                        if required_output:
+                            print(f"     Required output fields: {', '.join(required_output)}")
             print()
 
     async def _cmd_list_resources(self, args: List[str]) -> None:
@@ -669,6 +680,27 @@ class MCPShell:
                                     print(warning)
                             except json.JSONDecodeError:
                                 print("⚠️  Response is not valid JSON")
+                            
+                            # Also validate against outputSchema if tool has one
+                            tool_obj = next((t for t in self.tools if t.name == tool_name), None)
+                            if tool_obj and hasattr(tool_obj, 'outputSchema') and tool_obj.outputSchema:
+                                try:
+                                    # For text tools, we need to structure the result differently
+                                    if tool_name == "example:greet":
+                                        # Text tool returns array of TextContent objects
+                                        text_result = [{"type": "text", "text": content.text}]
+                                        jsonschema.validate(text_result, tool_obj.outputSchema)
+                                    else:
+                                        # JSON tool validates the parsed JSON directly
+                                        parsed_result = json.loads(content.text)
+                                        jsonschema.validate(parsed_result, tool_obj.outputSchema)
+                                    print("✅ Output schema validation passed")
+                                except jsonschema.ValidationError as e:
+                                    print(f"⚠️  Output schema validation warning: {e.message}")
+                                except json.JSONDecodeError:
+                                    print("⚠️  Cannot validate output schema: Response is not valid JSON")
+                                except Exception as e:
+                                    print(f"⚠️  Output schema validation error: {e}")
                         else:
                             # Check if content looks like JSON and format it
                             try:
@@ -679,6 +711,28 @@ class MCPShell:
                             except json.JSONDecodeError:
                                 # Not JSON, print as plain text
                                 print(content.text)
+                            
+                            # Validate against outputSchema for non-JSON tools too
+                            tool_obj = next((t for t in self.tools if t.name == tool_name), None)
+                            if tool_obj and hasattr(tool_obj, 'outputSchema') and tool_obj.outputSchema:
+                                try:
+                                    if tool_name == "example:greet":
+                                        # Text tool returns array of TextContent objects
+                                        text_result = [{"type": "text", "text": content.text}]
+                                        jsonschema.validate(text_result, tool_obj.outputSchema)
+                                        print("✅ Output schema validation passed")
+                                    else:
+                                        # Try to validate JSON content if possible
+                                        try:
+                                            parsed_result = json.loads(content.text)
+                                            jsonschema.validate(parsed_result, tool_obj.outputSchema)
+                                            print("✅ Output schema validation passed")
+                                        except json.JSONDecodeError:
+                                            print("⚠️  Cannot validate output schema: Response is not valid JSON")
+                                except jsonschema.ValidationError as e:
+                                    print(f"⚠️  Output schema validation warning: {e.message}")
+                                except Exception as e:
+                                    print(f"⚠️  Output schema validation error: {e}")
                     else:
                         print(content)
             else:
