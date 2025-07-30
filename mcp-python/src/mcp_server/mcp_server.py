@@ -257,8 +257,8 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 message=f"Tool not found: {name}"
             ))
     
-    async def greet_tool_impl(name: str, arguments: Dict[str, Any]) -> List[Dict[str, Any]]:
-        import jsonschema
+    async def greet_tool_impl(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        logger.debug(f"greet_tool_impl called with name={name}, arguments={arguments}")
         
         # Handle various argument types
         target_name = arguments.get("name", "World")
@@ -293,22 +293,14 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
             import datetime
             message_parts.append(f"Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-        # For MCP tools with outputSchema, return the structured data directly
-        # that matches the schema format exactly
-        result_data = [{
-            "type": "text",
-            "text": "\n".join(message_parts)
-        }]
+        # Return TextContent objects directly (no outputSchema validation needed)
+        result = [types.TextContent(
+            type="text",
+            text="\n".join(message_parts)
+        )]
         
-        # Validate result against output schema
-        try:
-            jsonschema.validate(result_data, JSON_SCHEMAS["example:greet:result"])
-        except jsonschema.ValidationError as e:
-            logger.warning(f"Tool result validation failed for example:greet: {e.message}")
-        except Exception as e:
-            logger.warning(f"Result validation error for example:greet: {e}")
-        
-        return result_data
+        logger.debug(f"greet_tool_impl returning TextContent: {result[0].text}")
+        return result
 
     async def greetingJson_tool_impl(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         import datetime
@@ -390,10 +382,9 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 name="example:greet",
                 description="Greet someone with a customizable message in different languages",
                 inputSchema=JSON_SCHEMAS["example:greet:args"],
-                outputSchema=JSON_SCHEMAS["example:greet:result"],
+                # No outputSchema - returns TextContent objects directly
                 _meta={
                     "args_schema_resource": "example:greet:args:schema",
-                    "result_schema_resource": "example:greet:result:schema",
                     "result_mime_type": "text/plain",
                     "audience": ["developer"],
                     "tags": ["greeting", "text"]

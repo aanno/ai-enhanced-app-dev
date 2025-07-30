@@ -434,7 +434,7 @@ class MCPShell:
                     # TODO: handle other types.ContentBlock as well (not only types.TextContent)
                     # for content in cast(types.TextContent, result.content):
                     for content in result.content:
-                        if hasattr(content, 'text') and c.text:
+                        if hasattr(content, 'text') and content.text:
                             # TODO: handle other types.ContentBlock as well (not only types.TextContent)
                             c: types.TextContent = cast(types.TextContent, content)
                             print(f"💥 {c.text}")

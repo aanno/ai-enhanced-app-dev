@@ -34,21 +34,34 @@ async def test_server_connection(mcp_client):
 
 @pytest.mark.asyncio
 async def test_greet_tool_invocation(mcp_client):
-    """Test basic greet tool invocation - currently has server-side validation issues"""
-    # The greet tool currently has validation issues and returns errors
-    # This is a known limitation of the current server implementation
+    """Test basic greet tool invocation"""
+    # Test basic greeting
     response = await mcp_client.call_tool("example:greet", {"name": "Alice"})
-    assert response["isError"] == True  # Current server behavior
+    assert not response["isError"]
     assert len(response["content"]) > 0
-    assert "validation error" in response["content"][0].lower() or "output" in response["content"][0].lower()
+    assert "Hello, Alice!" in response["content"][0]
 
-    # Test default parameter - also returns error
+    # Test default parameter (should use "World")
     response = await mcp_client.call_tool("example:greet", {})
-    assert response["isError"] == True  # Current server behavior
+    assert not response["isError"]
+    assert "Hello, World!" in response["content"][0]
     
-    # Test language parameter - also returns error
+    # Test language parameter
     response = await mcp_client.call_tool("example:greet", {"name": "Alice", "language": "fr"})
-    assert response["isError"] == True  # Current server behavior
+    assert not response["isError"]
+    assert "Bonjour, Alice!" in response["content"][0]
+    
+    # Test with user info
+    response = await mcp_client.call_tool("example:greet", {
+        "name": "Bob", 
+        "language": "de",
+        "user_info": {"role": "Developer", "team": "Backend"}
+    })
+    assert not response["isError"]
+    content = response["content"][0]
+    assert "Hallo, Bob!" in content
+    assert "Role: Developer" in content
+    assert "Team: Backend" in content
 
 
 @pytest.mark.asyncio
@@ -135,8 +148,15 @@ async def test_language_support(mcp_client):
     }
     
     for lang_code, expected_greeting in languages.items():
-        # Skip text tool testing - it currently has validation errors
-        # Test JSON tool only (which works correctly)
+        # Test text tool (now working correctly)
+        response = await mcp_client.call_tool("example:greet", {
+            "name": "TestUser",
+            "language": lang_code
+        })
+        assert not response["isError"]
+        assert f"{expected_greeting}, TestUser!" in response["content"][0]
+        
+        # Test JSON tool
         response = await mcp_client.call_tool("example:greetingJson", {
             "name": "TestUser",
             "preferences": {"language": lang_code}
