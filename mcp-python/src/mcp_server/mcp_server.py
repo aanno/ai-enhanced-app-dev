@@ -339,9 +339,18 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
         
         logger.debug(f"Extracted: target_name={target_name}, include_details={include_details}, preferences={preferences}")
 
-        # Build JSON response
+        # Build JSON response with language-specific greeting
+        language = preferences.get("language", "en")
+        greetings = {
+            "en": "Hello",
+            "es": "Hola", 
+            "fr": "Bonjour",
+            "de": "Hallo"
+        }
+        greeting_text = greetings.get(language, "Hello")
+        
         response = {
-            "greeting": f"Hello, {target_name}!",
+            "greeting": f"{greeting_text}, {target_name}!",
             "timestamp": datetime.datetime.now().isoformat()
         }
 
@@ -369,13 +378,27 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 name="example:greet",
                 description="Greet someone with a customizable message in different languages",
                 inputSchema=JSON_SCHEMAS["example:greet:args"],
-                outputSchema=JSON_SCHEMAS["example:greet:result"]
+                outputSchema=JSON_SCHEMAS["example:greet:result"],
+                _meta={
+                    "args_schema_resource": "example:greet:args:schema",
+                    "result_schema_resource": "example:greet:result:schema",
+                    "result_mime_type": "text/plain",
+                    "audience": ["developer"],
+                    "tags": ["greeting", "text"]
+                }
             ),
             types.Tool(
                 name="example:greetingJson",
                 description="Greet someone and return structured JSON response",
                 inputSchema=JSON_SCHEMAS["example:greetingJson:args"],
-                outputSchema=JSON_SCHEMAS["example:greetingJson:result"]
+                outputSchema=JSON_SCHEMAS["example:greetingJson:result"],
+                _meta={
+                    "args_schema_resource": "example:greetingJson:args:schema",
+                    "result_schema_resource": "example:greetingJson:result:schema",
+                    "result_mime_type": "application/json",
+                    "audience": ["developer"],
+                    "tags": ["greeting", "json"]
+                }
             )
         ]
 

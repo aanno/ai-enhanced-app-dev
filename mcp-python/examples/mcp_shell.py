@@ -664,6 +664,17 @@ class MCPShell:
             print(f"🔧 Calling tool '{tool_name}'...")
             result = await self.session.call_tool(tool_name, arguments)
 
+            # Check if this is an error result first
+            if hasattr(result, 'isError') and result.isError:
+                print(f"\n❌ Tool '{tool_name}' error:")
+                if hasattr(result, 'content') and result.content:
+                    for content in result.content:
+                        if hasattr(content, 'text') and content.text:
+                            print(f"💥 {content.text}")
+                else:
+                    print("Unknown error occurred")
+                return
+            
             print(f"\n✅ Tool '{tool_name}' result:")
             if hasattr(result, 'content') and result.content:
                 # Check if this tool returns JSON based on metadata
@@ -767,14 +778,36 @@ class MCPShell:
             if hasattr(result, 'contents') and result.contents:
                 for content in result.contents:
                     # Handle different resource content types
-                    if hasattr(content, 'text'):
+                    if hasattr(content, 'text') and content.text:
                         # Check if it's a JSON schema resource
                         if hasattr(resource, 'mimeType') and resource.mimeType == "application/schema+json":
                             formatted = self._format_json_output(content.text, "application/json")
                             print(f"📋 JSON Schema:\n{formatted}")
+                            
+                            # Validate that it's a valid JSON schema
+                            try:
+                                import jsonschema
+                                schema_data = json.loads(content.text)
+                                # Try to validate the schema itself using the meta-schema
+                                jsonschema.Draft7Validator.check_schema(schema_data)
+                                print("✅ JSON Schema is valid")
+                            except json.JSONDecodeError as e:
+                                print(f"⚠️  Schema validation warning: Invalid JSON - {e}")
+                            except jsonschema.SchemaError as e:
+                                print(f"⚠️  Schema validation warning: Invalid JSON Schema - {e.message}")
+                            except Exception as e:
+                                print(f"⚠️  Schema validation warning: {e}")
+                                
                         elif hasattr(resource, 'mimeType') and resource.mimeType == "application/json":
                             formatted = self._format_json_output(content.text, "application/json")
                             print(formatted)
+                            
+                            # Validate that it's valid JSON
+                            try:
+                                json.loads(content.text)
+                                print("✅ JSON is valid")
+                            except json.JSONDecodeError as e:
+                                print(f"⚠️  JSON validation warning: {e}")
                         else:
                             print(content.text)
                     elif hasattr(content, 'blob'):
