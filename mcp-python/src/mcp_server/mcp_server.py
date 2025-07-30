@@ -3,6 +3,7 @@ import atexit
 import contextlib
 import logging
 import signal
+import threading
 from types import FrameType
 from typing import Any, AsyncIterator, Dict, List, Optional
 
@@ -27,18 +28,14 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Global shutdown state
+_shutdown_event = threading.Event()
+_server_instance = None
+
 SAMPLE_RESOURCES = {
     "greeting": {
-        "content": "Hello! This is a sample text resource.",
-        "title": "Welcome Message",
-    },
-    "help": {
-        "content": "This server provides a few sample text resources for testing.",
-        "title": "Help Documentation",
-    },
-    "about": {
-        "content": "This is the MCP server with coverage support.",
-        "title": "About This Server",
+        "content": "Hello! This is a sample text resource for MCP testing.",
+        "title": "Sample Greeting Resource",
     },
 }
 
@@ -203,6 +200,12 @@ async def graceful_shutdown(
     frame: Optional[FrameType] = None
 ) -> None:
     """Handle graceful shutdown with robust coverage saving"""
+    global _shutdown_event
+    
+    if _shutdown_event.is_set():
+        return  # Already shutting down
+        
+    _shutdown_event.set()
     logger.info(f"\nReceived signal {signum}, shutting down gracefully...")
 
     # Save coverage data first (most important)
@@ -215,15 +218,25 @@ async def graceful_shutdown(
         except Exception as e:
             logger.error(f"Error saving coverage on shutdown: {e}")
 
-    # Stop server
+    # Stop server gracefully
     try:
-        if hasattr(server, 'stop'):
-            await server.stop()
+        if hasattr(server, 'should_exit'):
+            server.should_exit = True
+            logger.info("Server exit flag set")
+        if hasattr(server, 'shutdown'):
+            await server.shutdown()
+            logger.info("Server shutdown method called")
+        logger.info("Server shutdown completed")
     except Exception as e:
         logger.error(f"Error stopping server: {e}")
 
-    # Don't re-raise KeyboardInterrupt to avoid task exception
     logger.info("Graceful shutdown completed")
+    
+    # Force exit to ensure process terminates
+    import sys
+    import os
+    logger.info("Forcing process exit...")
+    os._exit(0)
 
 
 def create_mcp_server(json_response: bool = False, enable_coverage: bool = False) -> Starlette:
@@ -289,11 +302,15 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
         import datetime
         import json
         import jsonschema
+        
+        logger.debug(f"greetingJson_tool called with name={name}, arguments={arguments}")
 
         # Extract arguments
         target_name = arguments.get("name", "World")
         include_details = arguments.get("include_details", False)
         preferences = arguments.get("preferences", {})
+        
+        logger.debug(f"Extracted: target_name={target_name}, include_details={include_details}, preferences={preferences}")
 
         # Build JSON response
         response = {
@@ -311,22 +328,12 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 "version": "1.0.0"
             }
 
-        result = [types.TextContent(
-            type="text",
-            text=json.dumps(response, indent=2)
-        )]
+        logger.debug(f"Built response: {response}")
         
-        # Validate result against output schema
-        try:
-            # Parse the JSON response to validate its structure
-            parsed_response = json.loads(result[0].text)
-            jsonschema.validate(parsed_response, JSON_SCHEMAS["example:greetingJson:result"])
-        except jsonschema.ValidationError as e:
-            logger.warning(f"Tool result validation failed for example:greetingJson: {e.message}")
-        except Exception as e:
-            logger.warning(f"Result validation error for example:greetingJson: {e}")
-        
-        return result
+        # For MCP tools with outputSchema, we must return the structured object directly
+        # not wrapped in TextContent. The MCP framework will handle the formatting.
+        logger.debug(f"Returning structured response directly: {response}")
+        return response
 
     @app.list_tools()
     async def list_tools() -> List[types.Tool]:
@@ -388,16 +395,21 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
             mimeType="application/json",
         ))
 
-        # Add JSON schema resources
-        for schema_name in JSON_SCHEMAS.keys():
-            resource_name = f"{schema_name}:schema"
-            resources.append(types.Resource(
-                uri=AnyUrl(f"file:///{resource_name}.json"),
-                name=resource_name,
-                title=f"JSON Schema for {schema_name}",
-                description=f"JSON Schema definition for {schema_name}",
-                mimeType="application/schema+json",
-            ))
+        # Add only the most relevant JSON schema resources (keep it minimal)
+        essential_schemas = [
+            "example:greetingJson:args",  # Main JSON tool input schema
+            "example:greetingJson:result"  # Main JSON tool output schema
+        ]
+        for schema_name in essential_schemas:
+            if schema_name in JSON_SCHEMAS:
+                resource_name = f"{schema_name}:schema"
+                resources.append(types.Resource(
+                    uri=AnyUrl(f"file:///{resource_name}.json"),
+                    name=resource_name,
+                    title=f"JSON Schema for {schema_name}",
+                    description=f"JSON Schema definition for {schema_name}",
+                    mimeType="application/schema+json",
+                ))
 
         return resources
 
@@ -478,7 +490,10 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGTERM, signal.SIGINT):
                 def signal_handler(s: int = sig) -> None:
-                    asyncio.create_task(graceful_shutdown(app, cov, s))
+                    # Signal the server to exit
+                    if _server_instance:
+                        _server_instance.should_exit = True
+                    asyncio.create_task(graceful_shutdown(_server_instance, cov, s))
                 loop.add_signal_handler(sig, signal_handler)
 
             logger.info("Server started")
@@ -500,6 +515,8 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
 
 async def run_server(port: int = 8000, enable_coverage: bool = False) -> None:
     """Run the server with optional coverage support"""
+    global _server_instance
+    
     starlette_app = create_mcp_server(enable_coverage=enable_coverage)
 
     import uvicorn
@@ -510,12 +527,15 @@ async def run_server(port: int = 8000, enable_coverage: bool = False) -> None:
         log_level="info",
     )
     server = uvicorn.Server(config)
+    _server_instance = server
 
     try:
         await server.serve()
     except KeyboardInterrupt:
-        print("\n🛑 Shutting down server gracefully...")
-        logger.info("Received KeyboardInterrupt, shutting down...")
+        logger.debug("KeyboardInterrupt caught in run_server")
+        if not _shutdown_event.is_set():
+            print("\n🛑 Shutting down server gracefully...")
+            logger.info("Received KeyboardInterrupt, shutting down...")
     except Exception as e:
         logger.error(f"Server error: {e}")
         raise
@@ -542,8 +562,12 @@ async def run_server(port: int = 8000, enable_coverage: bool = False) -> None:
 def main(port: int, coverage: bool) -> None:
     """Start the MCP server with optional coverage support."""
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler('server.log'),
+            logging.StreamHandler()  # Also keep console output
+        ]
     )
 
     # Global coverage instance for atexit handler

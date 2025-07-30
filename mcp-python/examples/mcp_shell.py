@@ -455,9 +455,17 @@ class MCPShell:
 
                     lexer = JsonLexer()
                     formatter = TerminalFormatter()
-                    return highlight(formatted, lexer, formatter).rstrip()
+                    highlighted = highlight(formatted, lexer, formatter).rstrip()
+                    # Debug: check if pygments returned error text instead of formatted JSON
+                    if "error" in highlighted.lower() or len(highlighted) > len(formatted) * 3:
+                        logger.warning(f"Pygments may have returned error, falling back to plain JSON")
+                        return formatted
+                    return highlighted
                 except ImportError:
                     # Fall back to plain formatting if pygments not available
+                    pass
+                except Exception as e:
+                    logger.warning(f"Pygments formatting failed: {e}, using plain JSON")
                     pass
 
                 return formatted
@@ -669,8 +677,11 @@ class MCPShell:
                     if hasattr(content, 'type') and content.type == "text":
                         if is_json_tool:
                             # This is JSON content even though type is "text"
+                            logger.debug(f"Processing JSON tool response. Content: {repr(content.text)}")
                             formatted = self._format_json_output(content.text, "application/json")
-                            print(f"📄 JSON Response:\n{formatted}")
+                            logger.debug(f"Formatted result: {repr(formatted)}")
+                            print(f"📄 JSON Response:")
+                            print(formatted)
 
                             # Validate result against schema if available
                             result_schema_key = f"{tool_name}:result"
@@ -693,17 +704,16 @@ class MCPShell:
                                 print(content.text)
                         
                         # Validate against outputSchema if tool has one (do this once for both cases)
-                        tool_obj = next((t for t in self.tools if t.name == tool_name), None)
-                        if tool_obj and hasattr(tool_obj, 'outputSchema') and tool_obj.outputSchema:
+                        if hasattr(tool, 'outputSchema') and tool.outputSchema:
                             try:
                                 if tool_name == "example:greet":
                                     # Text tool returns array of TextContent objects
                                     text_result = [{"type": "text", "text": content.text}]
-                                    jsonschema.validate(text_result, tool_obj.outputSchema)
+                                    jsonschema.validate(text_result, tool.outputSchema)
                                 else:
                                     # JSON tool validates the parsed JSON directly
                                     parsed_result = json.loads(content.text)
-                                    jsonschema.validate(parsed_result, tool_obj.outputSchema)
+                                    jsonschema.validate(parsed_result, tool.outputSchema)
                                 print("✅ Output schema validation passed")
                             except jsonschema.ValidationError as e:
                                 print(f"⚠️  Output schema validation warning: {e.message}")
@@ -802,9 +812,9 @@ def main(port: int) -> None:
         print(f"Server: {server_url}")
         print()
 
-        # Setup logging
+        # Setup logging with DEBUG level
         logging.basicConfig(
-            level=logging.INFO,
+            level=logging.DEBUG,
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
             handlers=[logging.FileHandler('.mcp_shell.log')]
         )
