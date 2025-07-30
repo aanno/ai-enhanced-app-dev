@@ -60,7 +60,7 @@ class JSONCompleter(Completer):
         json_part = parts[2]
         
         # Analyze JSON context
-        self._provide_json_completions(json_part, document)
+        yield from self._provide_json_completions(json_part, document)
     
     def _provide_json_completions(self, json_part: str, document: Document):
         """Provide contextual JSON completions."""
@@ -69,6 +69,25 @@ class JSONCompleter(Completer):
         if not json_part.strip():
             yield Completion('{', start_position=0)
             yield Completion('{}', start_position=0)
+            # Add schema-based completion if available
+            if self.schema and 'properties' in self.schema:
+                required_props = self.schema.get('required', [])
+                if required_props:
+                    # Suggest a JSON object with required properties
+                    required_json_parts = []
+                    for prop in required_props[:2]:  # Limit to first 2 required props
+                        prop_schema = self.schema['properties'].get(prop, {})
+                        prop_type = prop_schema.get('type', 'string')
+                        if prop_type == 'string':
+                            required_json_parts.append(f'"{prop}": ""')
+                        elif prop_type == 'boolean':
+                            required_json_parts.append(f'"{prop}": true')
+                        else:
+                            required_json_parts.append(f'"{prop}": ""')
+                    
+                    if required_json_parts:
+                        json_template = '{ ' + ', '.join(required_json_parts) + ' }'
+                        yield Completion(json_template, start_position=0, display=f"Template with required fields")
             return
             
         # If we have an opening brace but no closing, suggest properties
