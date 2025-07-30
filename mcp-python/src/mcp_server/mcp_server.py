@@ -45,6 +45,108 @@ SAMPLE_RESOURCES = {
     },
 }
 
+# JSON Schemas for tools
+JSON_SCHEMAS = {
+    "example:greet:args": {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Name of the person to greet",
+                "default": "World"
+            },
+            "greeting": {
+                "type": "string", 
+                "description": "Custom greeting text (overridden by language setting)",
+                "default": "Hello"
+            },
+            "language": {
+                "type": "string",
+                "description": "Language for greeting",
+                "enum": ["en", "es", "fr", "de"],
+                "default": "en"
+            },
+            "include_time": {
+                "type": "boolean",
+                "description": "Include current timestamp in response",
+                "default": False
+            },
+            "user_info": {
+                "type": "object",
+                "description": "Additional user information to include",
+                "properties": {
+                    "role": {
+                        "type": "string",
+                        "description": "User's role"
+                    },
+                    "team": {
+                        "type": "string", 
+                        "description": "User's team"
+                    }
+                }
+            }
+        },
+        "required": []
+    },
+    "example:greet:result": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "enum": ["text"]},
+                "text": {"type": "string"}
+            },
+            "required": ["type", "text"]
+        }
+    },
+    "example:greetingJson:args": {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Name of the person to greet",
+                "default": "World"
+            },
+            "include_details": {
+                "type": "boolean",
+                "description": "Include additional details in response",
+                "default": False
+            },
+            "preferences": {
+                "type": "object",
+                "description": "User preferences",
+                "properties": {
+                    "language": {"type": "string", "enum": ["en", "es", "fr", "de"]},
+                    "format": {"type": "string", "enum": ["simple", "detailed"]}
+                }
+            }
+        },
+        "required": []
+    },
+    "example:greetingJson:result": {
+        "type": "object",
+        "properties": {
+            "greeting": {"type": "string"},
+            "timestamp": {"type": "string"},
+            "user": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "preferences": {"type": "object"}
+                }
+            },
+            "server_info": {
+                "type": "object", 
+                "properties": {
+                    "name": {"type": "string"},
+                    "version": {"type": "string"}
+                }
+            }
+        },
+        "required": ["greeting"]
+    }
+}
+
 @contextlib.asynccontextmanager
 async def coverage_context(enable_coverage: bool = False) -> AsyncIterator[Optional[Coverage]]:
     """Context manager for coverage collection with robust cleanup"""
@@ -152,52 +254,67 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
             text="\n".join(message_parts)
         )]
 
+    @app.call_tool()
+    async def greetingJson_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        import json
+        import datetime
+        
+        # Extract arguments
+        target_name = arguments.get("name", "World")
+        include_details = arguments.get("include_details", False)
+        preferences = arguments.get("preferences", {})
+        
+        # Build JSON response
+        response = {
+            "greeting": f"Hello, {target_name}!",
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+        
+        if include_details:
+            response["user"] = {
+                "name": target_name,
+                "preferences": preferences
+            }
+            response["server_info"] = {
+                "name": "mcp-server-with-coverage",
+                "version": "1.0.0"
+            }
+        
+        return [types.TextContent(
+            type="application/json",
+            text=json.dumps(response, indent=2)
+        )]
+
     @app.list_tools()
     async def list_tools() -> List[types.Tool]:
         return [
             types.Tool(
                 name="example:greet",
                 description="Greet someone with a customizable message in different languages",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "Name of the person to greet",
-                            "default": "World"
-                        },
-                        "greeting": {
-                            "type": "string", 
-                            "description": "Custom greeting text (overridden by language setting)",
-                            "default": "Hello"
-                        },
-                        "language": {
-                            "type": "string",
-                            "description": "Language for greeting",
-                            "enum": ["en", "es", "fr", "de"],
-                            "default": "en"
-                        },
-                        "include_time": {
-                            "type": "boolean",
-                            "description": "Include current timestamp in response",
-                            "default": False
-                        },
-                        "user_info": {
-                            "type": "object",
-                            "description": "Additional user information to include",
-                            "properties": {
-                                "role": {
-                                    "type": "string",
-                                    "description": "User's role"
-                                },
-                                "team": {
-                                    "type": "string", 
-                                    "description": "User's team"
-                                }
-                            }
-                        }
-                    },
-                    "required": []
+                inputSchema=JSON_SCHEMAS["example:greet:args"],
+                # Custom metadata for schema references
+                annotations=types.ToolAnnotations(
+                    audience=["developer"],
+                    tags=["greeting", "text"]
+                ),
+                meta={
+                    "args_schema_resource": "schema://example:greet:args",
+                    "result_schema_resource": "schema://example:greet:result",
+                    "result_mime_type": "text/plain"
+                }
+            ),
+            types.Tool(
+                name="example:greetingJson", 
+                description="Greet someone and return structured JSON response",
+                inputSchema=JSON_SCHEMAS["example:greetingJson:args"],
+                annotations=types.ToolAnnotations(
+                    audience=["developer"],
+                    tags=["greeting", "json"]
+                ),
+                meta={
+                    "args_schema_resource": "schema://example:greetingJson:args",
+                    "result_schema_resource": "schema://example:greetingJson:result", 
+                    "result_mime_type": "application/json"
                 }
             )
         ]
@@ -205,21 +322,50 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
     # Resource endpoints
     @app.list_resources()
     async def list_resources() -> List[types.Resource]:
-        return [
-            types.Resource(
+        resources = []
+        
+        # Add regular text resources
+        for name, data in SAMPLE_RESOURCES.items():
+            resources.append(types.Resource(
                 uri=AnyUrl(f"file:///{name}.txt"),
                 name=name,
                 title=data["title"],
                 description=f"A sample text resource named {name}",
                 mimeType="text/plain",
-            )
-            for name, data in SAMPLE_RESOURCES.items()
-        ]
+            ))
+        
+        # Add JSON schema resources
+        for schema_name in JSON_SCHEMAS.keys():
+            resources.append(types.Resource(
+                uri=AnyUrl(f"schema://{schema_name}"),
+                name=f"schema-{schema_name.replace(':', '-')}",
+                title=f"JSON Schema for {schema_name}",
+                description=f"JSON Schema definition for {schema_name}",
+                mimeType="application/schema+json",
+            ))
+        
+        return resources
 
     @app.read_resource()
     async def read_resource(uri: AnyUrl) -> List[ReadResourceContents]:
-        # Parse the URI to get the resource name
+        import json
         uri_str = str(uri)
+        
+        # Handle schema resources
+        if uri_str.startswith("schema://"):
+            schema_name = uri_str.replace("schema://", "")
+            if schema_name not in JSON_SCHEMAS:
+                raise McpError(types.ErrorData(
+                    code=404,
+                    message=f"Schema not found: {schema_name}"
+                ))
+            
+            return [ReadResourceContents(
+                content=json.dumps(JSON_SCHEMAS[schema_name], indent=2),
+                mime_type="application/schema+json"
+            )]
+        
+        # Handle regular file resources
         if uri_str.startswith("file:///"):
             name = uri_str.replace("file:///", "").replace(".txt", "")
         else:

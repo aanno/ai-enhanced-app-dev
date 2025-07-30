@@ -10,15 +10,18 @@ import asyncio
 import json
 import logging
 import click
+import jsonschema
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.completion import WordCompleter, CompleteEvent, Completion
+from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.styles import Style
+from prompt_toolkit.lexers import PygmentsLexer
 
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
@@ -28,13 +31,14 @@ logger = logging.getLogger(__name__)
 
 
 class MCPShell:
-    """Interactive MCP client shell."""
+    """Interactive MCP client shell with JSON schema support."""
 
     def __init__(self, server_url: str = "http://localhost:8001/mcp"):
         self.server_url = server_url
         self.session: Optional[ClientSession] = None
         self.tools: List[types.Tool] = []
         self.resources: List[types.Resource] = []
+        self.schemas: Dict[str, Dict[str, Any]] = {}  # Cache for JSON schemas
         
         # Setup prompt toolkit
         self.prompt_session = PromptSession(
@@ -107,11 +111,72 @@ class MCPShell:
             resources_result = await self.session.list_resources()
             self.resources = resources_result.resources if hasattr(resources_result, 'resources') else []
             
+            # Cache JSON schemas from tools metadata
+            await self._cache_schemas()
+            
             logger.info(f"Found {len(self.tools)} tools and {len(self.resources)} resources")
             
         except Exception as e:
             logger.error(f"Failed to refresh server info: {e}")
             print(f"⚠️  Failed to refresh server info: {e}")
+
+    async def _cache_schemas(self) -> None:
+        """Cache JSON schemas referenced in tool metadata."""
+        for tool in self.tools:
+            if hasattr(tool, 'meta') and tool.meta:
+                # Cache argument schema
+                if 'args_schema_resource' in tool.meta:
+                    schema_uri = tool.meta['args_schema_resource']
+                    await self._fetch_schema(f"{tool.name}:args", schema_uri)
+                
+                # Cache result schema
+                if 'result_schema_resource' in tool.meta:
+                    schema_uri = tool.meta['result_schema_resource']
+                    await self._fetch_schema(f"{tool.name}:result", schema_uri)
+
+    async def _fetch_schema(self, schema_key: str, schema_uri: str) -> None:
+        """Fetch and cache a JSON schema from a resource URI."""
+        try:
+            if schema_uri in self.schemas:
+                return  # Already cached
+                
+            result = await self.session.read_resource(schema_uri)
+            if hasattr(result, 'contents') and result.contents:
+                for content in result.contents:
+                    if hasattr(content, 'text'):
+                        schema_data = json.loads(content.text)
+                        self.schemas[schema_key] = schema_data
+                        logger.debug(f"Cached schema for {schema_key}")
+                        break
+        except Exception as e:
+            logger.warning(f"Failed to fetch schema {schema_uri}: {e}")
+
+    def _validate_json_with_schema(self, data: Dict[str, Any], schema_key: str) -> List[str]:
+        """Validate JSON data against a cached schema. Returns list of warnings."""
+        warnings = []
+        if schema_key not in self.schemas:
+            warnings.append(f"⚠️  Schema not available for validation: {schema_key}")
+            return warnings
+            
+        try:
+            jsonschema.validate(data, self.schemas[schema_key])
+        except jsonschema.ValidationError as e:
+            warnings.append(f"⚠️  JSON validation warning: {e.message}")
+        except Exception as e:
+            warnings.append(f"⚠️  Schema validation error: {e}")
+            
+        return warnings
+
+    def _format_json_output(self, content: str, mime_type: str = "application/json") -> str:
+        """Format JSON output with syntax highlighting."""
+        try:
+            if mime_type == "application/json":
+                # Parse and reformat JSON for better display
+                parsed = json.loads(content)
+                return json.dumps(parsed, indent=2)
+            return content
+        except json.JSONDecodeError:
+            return content
 
     async def _run_interactive_shell(self) -> None:
         """Run the interactive shell loop."""
@@ -202,11 +267,27 @@ class MCPShell:
             print(f"  {i}. {tool.name}")
             if tool.description:
                 print(f"     {tool.description}")
-            # Show input schema if available
+            
+            # Show metadata info
+            if hasattr(tool, 'meta') and tool.meta:
+                if 'result_mime_type' in tool.meta:
+                    print(f"     Returns: {tool.meta['result_mime_type']}")
+                if 'args_schema_resource' in tool.meta:
+                    print(f"     📋 Args schema: {tool.meta['args_schema_resource']}")
+                if 'result_schema_resource' in tool.meta:
+                    print(f"     📋 Result schema: {tool.meta['result_schema_resource']}")
+                    
+            # Show input schema summary if available
             if hasattr(tool, 'inputSchema') and tool.inputSchema:
                 required_params = tool.inputSchema.get('required', [])
                 if required_params:
                     print(f"     Required: {', '.join(required_params)}")
+                    
+                # Show available properties 
+                if 'properties' in tool.inputSchema:
+                    props = list(tool.inputSchema['properties'].keys())
+                    if props:
+                        print(f"     Available params: {', '.join(props)}")
             print()
 
     async def _cmd_list_resources(self, args: List[str]) -> None:
@@ -258,6 +339,13 @@ class MCPShell:
                 print("Example: call example:greet {\"name\": \"Alice\"}")
                 return
                 
+        # Validate arguments against schema if available
+        schema_key = f"{tool_name}:args"
+        if arguments:
+            warnings = self._validate_json_with_schema(arguments, schema_key)
+            for warning in warnings:
+                print(warning)
+        
         try:
             print(f"🔧 Calling tool '{tool_name}'...")
             result = await self.session.call_tool(tool_name, arguments)
@@ -267,6 +355,20 @@ class MCPShell:
                 for content in result.content:
                     if hasattr(content, 'type') and content.type == "text":
                         print(content.text)
+                    elif hasattr(content, 'type') and content.type == "application/json":
+                        # Format JSON output with validation
+                        formatted = self._format_json_output(content.text, "application/json") 
+                        print(formatted)
+                        
+                        # Validate result against schema if available
+                        result_schema_key = f"{tool_name}:result"
+                        try:
+                            parsed_result = json.loads(content.text)
+                            warnings = self._validate_json_with_schema(parsed_result, result_schema_key)
+                            for warning in warnings:
+                                print(warning)
+                        except json.JSONDecodeError:
+                            print("⚠️  Response is not valid JSON")
                     else:
                         print(content)
             else:
@@ -304,7 +406,15 @@ class MCPShell:
                 for content in result.contents:
                     # Handle different resource content types
                     if hasattr(content, 'text'):
-                        print(content.text)
+                        # Check if it's a JSON schema resource
+                        if hasattr(resource, 'mimeType') and resource.mimeType == "application/schema+json":
+                            formatted = self._format_json_output(content.text, "application/json")
+                            print(f"📋 JSON Schema:\n{formatted}")
+                        elif hasattr(resource, 'mimeType') and resource.mimeType == "application/json":
+                            formatted = self._format_json_output(content.text, "application/json")
+                            print(formatted)
+                        else:
+                            print(content.text)
                     elif hasattr(content, 'blob'):
                         print(f"<binary data ({len(content.blob)} bytes)>")
                     elif hasattr(content, 'content'):
