@@ -159,6 +159,50 @@ class JSONCompleter(Completer):
                     yield Completion(' "', start_position=0)
             return
 
+        # Handle nested object completion
+        if ':' in json_part and '{' in json_part:
+            # Try to find nested object context
+            try:
+                # Look for property: { pattern
+                import re
+                nested_match = re.search(r'"(\w+)"\s*:\s*\{\s*$', json_part)
+                if nested_match:
+                    prop_name = nested_match.group(1)
+                    if self.schema and 'properties' in self.schema:
+                        prop_schema = self.schema['properties'].get(prop_name)
+                        if prop_schema and prop_schema.get('type') == 'object' and 'properties' in prop_schema:
+                            # We're in a nested object, suggest its properties
+                            yield Completion('"', start_position=0)
+                            for nested_prop, nested_schema in prop_schema['properties'].items():
+                                nested_type = nested_schema.get('type', 'string')
+                                description = nested_schema.get('description', '')
+                                
+                                if nested_type == 'string':
+                                    completion = f'"{nested_prop}": ""'
+                                elif nested_type == 'boolean':
+                                    completion = f'"{nested_prop}": true'
+                                else:
+                                    completion = f'"{nested_prop}": '
+                                
+                                yield Completion(
+                                    completion,
+                                    start_position=0,
+                                    display=f'"{nested_prop}" - {description}'
+                                )
+                            return
+                
+                # Check for empty object that needs closing
+                if json_part.strip().endswith('{}'):
+                    # Look for what comes after the empty object
+                    remaining_pattern = r'\{\}\s*$'
+                    if re.search(remaining_pattern, json_part):
+                        yield Completion(', "', start_position=0)
+                        yield Completion(' }', start_position=0)
+                        return
+                        
+            except Exception:
+                pass  # Fall through to other completion logic
+        
         # If we're typing a property name (after quote)
         if '"' in json_part and json_part.count('"') % 2 == 1:
             # We're inside a property name
@@ -174,6 +218,18 @@ class JSONCompleter(Completer):
                             completion = remaining + '": '
                             yield Completion(completion, start_position=0)
             return
+        
+        # Check if we need closing braces
+        if '{' in json_part and json_part.count('{') > json_part.count('}'):
+            # We have unclosed braces, suggest closing
+            open_braces = json_part.count('{')
+            close_braces = json_part.count('}')
+            missing_braces = open_braces - close_braces
+            
+            if missing_braces > 0:
+                closing = ' }' * missing_braces
+                yield Completion(closing, start_position=0, display="Close JSON object")
+                return
 
 
 class DynamicMCPCompleter(Completer):
@@ -284,7 +340,12 @@ class MCPShell:
                     await self._run_interactive_shell()
 
         except Exception as e:
-            print(f"❌ Failed to connect: {e}")
+            error_msg = str(e)
+            if "TaskGroup" in error_msg or "Connection" in error_msg:
+                print(f"❌ Failed to connect to MCP server at {self.server_url}")
+                print("💡 Make sure the server is running. Try: python -m mcp_server.mcp_server")
+            else:
+                print(f"❌ Failed to connect: {error_msg}")
             logger.exception("Connection failed")
 
     async def _refresh_server_info(self) -> None:
@@ -307,8 +368,18 @@ class MCPShell:
             logger.info(f"Found {len(self.tools)} tools and {len(self.resources)} resources")
 
         except Exception as e:
-            logger.error(f"Failed to refresh server info: {e}")
-            print(f"⚠️  Failed to refresh server info: {e}")
+            error_msg = str(e)
+            if "TaskGroup" in error_msg or "Connection" in error_msg or "stream" in error_msg.lower():
+                print("🔌 Lost connection to server. The server may have been stopped.")
+                print("💡 Please restart the server and try reconnecting.")
+                # Clear session to prevent further attempts
+                self.session = None
+                self.tools = []
+                self.resources = []
+                self.schemas = {}
+            else:
+                logger.error(f"Failed to refresh server info: {e}")
+                print(f"⚠️  Failed to refresh server info: {error_msg}")
 
     async def _cache_schemas(self) -> None:
         """Cache JSON schemas referenced in tool metadata."""

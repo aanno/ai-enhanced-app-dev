@@ -448,14 +448,13 @@ async def run_server(port: int = 8000, enable_coverage: bool = False) -> None:
     try:
         await server.serve()
     except KeyboardInterrupt:
+        print("\n🛑 Shutting down server gracefully...")
         logger.info("Received KeyboardInterrupt, shutting down...")
     except Exception as e:
         logger.error(f"Server error: {e}")
         raise
     finally:
         try:
-            if not server.started:
-                await server.startup()
             if server.started and not server.should_exit:
                 await server.shutdown()
         except Exception as e:
@@ -503,6 +502,8 @@ def main(port: int, coverage: bool) -> None:
 
     try:
         asyncio.run(run_server(port=port, enable_coverage=coverage))
+    except KeyboardInterrupt:
+        print("👋 Server stopped.")
     except Exception as e:
         logger.error(f"Fatal server error: {e}")
         raise
