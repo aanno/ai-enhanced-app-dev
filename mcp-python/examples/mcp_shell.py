@@ -172,14 +172,19 @@ class DynamicMCPCompleter(Completer):
             if len(parts) >= 2:
                 tool_name = parts[1]
                 
-                # Get schema for this tool
-                schema_key = f"{tool_name}:args"
-                schema = self.shell.schemas.get(schema_key)
-                
-                # Create JSON completer with tool-specific schema
-                json_completer = JSONCompleter(schema)
-                yield from json_completer.get_completions(document, complete_event)
-                return
+                # Only provide JSON completions if we have a valid tool name
+                # and there's either a third part (JSON arg) or space after tool name
+                if tool_name and (len(parts) >= 3 or current_line.endswith(' ')):
+                    # Check if this is a valid tool
+                    if any(tool.name == tool_name for tool in self.shell.tools):
+                        # Get schema for this tool
+                        schema_key = f"{tool_name}:args"
+                        schema = self.shell.schemas.get(schema_key)
+                        
+                        # Create JSON completer with tool-specific schema
+                        json_completer = JSONCompleter(schema)
+                        yield from json_completer.get_completions(document, complete_event)
+                        return
         
         # Default command completion
         completions = list(self.shell.commands.keys())
@@ -286,15 +291,19 @@ class MCPShell:
     async def _cache_schemas(self) -> None:
         """Cache JSON schemas referenced in tool metadata."""
         for tool in self.tools:
-            if hasattr(tool, 'meta') and tool.meta:
+            # Get meta field from model dump (works around pydantic serialization issues)
+            tool_data = tool.model_dump()
+            meta = tool_data.get('meta')
+            
+            if meta:
                 # Cache argument schema
-                if 'args_schema_resource' in tool.meta:
-                    schema_uri = tool.meta['args_schema_resource']
-                    await self._fetch_schema(f"{tool.name}:args", schema_uri)
+                if 'args_schema_resource' in meta:
+                    schema_resource_name = meta['args_schema_resource']
+                    await self._fetch_schema(f"{tool.name}:args", schema_resource_name)
                 
                 # Cache result schema
-                if 'result_schema_resource' in tool.meta:
-                    schema_uri = tool.meta['result_schema_resource']
+                if 'result_schema_resource' in meta:
+                    schema_uri = meta['result_schema_resource']
                     await self._fetch_schema(f"{tool.name}:result", schema_uri)
 
     async def _fetch_schema(self, schema_key: str, schema_resource_name: str) -> None:
@@ -364,7 +373,7 @@ class MCPShell:
 
     async def _run_interactive_shell(self) -> None:
         """Run the interactive shell loop."""
-        print(HTML("\n<b>🐚 MCP Interactive Shell</b>"))
+        print("\n🐚 MCP Interactive Shell")
         print("Type 'help' for available commands or 'exit' to quit.")
         
         while True:
@@ -446,13 +455,15 @@ class MCPShell:
                 print(f"     {tool.description}")
             
             # Show metadata info
-            if hasattr(tool, 'meta') and tool.meta:
-                if 'result_mime_type' in tool.meta:
-                    print(f"     Returns: {tool.meta['result_mime_type']}")
-                if 'args_schema_resource' in tool.meta:
-                    print(f"     📋 Args schema: {tool.meta['args_schema_resource']}")
-                if 'result_schema_resource' in tool.meta:
-                    print(f"     📋 Result schema: {tool.meta['result_schema_resource']}")
+            tool_data = tool.model_dump()
+            meta = tool_data.get('meta')
+            if meta:
+                if 'result_mime_type' in meta:
+                    print(f"     Returns: {meta['result_mime_type']}")
+                if 'args_schema_resource' in meta:
+                    print(f"     📋 Args schema: {meta['args_schema_resource']}")
+                if 'result_schema_resource' in meta:
+                    print(f"     📋 Result schema: {meta['result_schema_resource']}")
                     
             # Show input schema summary if available
             if hasattr(tool, 'inputSchema') and tool.inputSchema:
@@ -544,8 +555,10 @@ class MCPShell:
             if hasattr(result, 'content') and result.content:
                 # Check if this tool returns JSON based on metadata
                 is_json_tool = False
-                if hasattr(tool, 'meta') and tool.meta and 'result_mime_type' in tool.meta:
-                    is_json_tool = tool.meta['result_mime_type'] == "application/json"
+                tool_data = tool.model_dump()
+                meta = tool_data.get('meta')
+                if meta and 'result_mime_type' in meta:
+                    is_json_tool = meta['result_mime_type'] == "application/json"
                 
                 for content in result.content:
                     if hasattr(content, 'type') and content.type == "text":
@@ -564,7 +577,15 @@ class MCPShell:
                             except json.JSONDecodeError:
                                 print("⚠️  Response is not valid JSON")
                         else:
-                            print(content.text)
+                            # Check if content looks like JSON and format it
+                            try:
+                                json.loads(content.text)
+                                # It's valid JSON, format it with highlighting
+                                formatted = self._format_json_output(content.text, "application/json")
+                                print(formatted)
+                            except json.JSONDecodeError:
+                                # Not JSON, print as plain text
+                                print(content.text)
                     else:
                         print(content)
             else:
