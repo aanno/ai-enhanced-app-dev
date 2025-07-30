@@ -1,21 +1,18 @@
 import asyncio
-import contextlib
-import signal
-import json
-import logging
-import anyio
-import click
 import atexit
-from typing import AsyncIterator, Optional, Any, Dict, List
+import contextlib
+import logging
+import signal
 from types import FrameType
+from typing import Any, AsyncIterator, Dict, List, Optional
 
+import click
 import mcp.types as types
 from mcp.server.lowlevel import Server
+from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.shared.exceptions import McpError
-from mcp.server.lowlevel.helper_types import ReadResourceContents
 from pydantic import AnyUrl
-from typing import List
 from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.types import Receive, Scope, Send
@@ -56,7 +53,7 @@ JSON_SCHEMAS = {
                 "default": "World"
             },
             "greeting": {
-                "type": "string", 
+                "type": "string",
                 "description": "Custom greeting text (overridden by language setting)",
                 "default": "Hello"
             },
@@ -80,7 +77,7 @@ JSON_SCHEMAS = {
                         "description": "User's role"
                     },
                     "team": {
-                        "type": "string", 
+                        "type": "string",
                         "description": "User's team"
                     }
                 }
@@ -136,7 +133,7 @@ JSON_SCHEMAS = {
                 }
             },
             "server_info": {
-                "type": "object", 
+                "type": "object",
                 "properties": {
                     "name": {"type": "string"},
                     "version": {"type": "string"}
@@ -146,6 +143,7 @@ JSON_SCHEMAS = {
         "required": ["greeting"]
     }
 }
+
 
 @contextlib.asynccontextmanager
 async def coverage_context(enable_coverage: bool = False) -> AsyncIterator[Optional[Coverage]]:
@@ -159,7 +157,7 @@ async def coverage_context(enable_coverage: bool = False) -> AsyncIterator[Optio
         except Exception as e:
             logger.error(f"Failed to start coverage: {e}")
             cov = None
-    
+
     try:
         yield cov
     finally:
@@ -177,6 +175,7 @@ async def coverage_context(enable_coverage: bool = False) -> AsyncIterator[Optio
                 except Exception:
                     pass
 
+
 async def graceful_shutdown(
     server: Any,
     cov: Optional[Coverage] = None,
@@ -185,7 +184,7 @@ async def graceful_shutdown(
 ) -> None:
     """Handle graceful shutdown with robust coverage saving"""
     logger.info(f"\nReceived signal {signum}, shutting down gracefully...")
-    
+
     # Save coverage data first (most important)
     if cov is not None:
         try:
@@ -195,19 +194,20 @@ async def graceful_shutdown(
             logger.info("Coverage data saved to .coverage")
         except Exception as e:
             logger.error(f"Error saving coverage on shutdown: {e}")
-    
+
     # Stop server
     try:
         if hasattr(server, 'stop'):
             await server.stop()
     except Exception as e:
         logger.error(f"Error stopping server: {e}")
-    
+
     # Reset signal handler and exit
     if signum is not None:
         signal.signal(signum, signal.SIG_DFL)
         if signum == signal.SIGINT:
             raise KeyboardInterrupt()
+
 
 def create_mcp_server(json_response: bool = False, enable_coverage: bool = False) -> Starlette:
     """Create the MCP server application with both tools and resources"""
@@ -222,33 +222,33 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
         language = arguments.get("language", "en")
         include_time = arguments.get("include_time", False)
         user_info = arguments.get("user_info", {})
-        
+
         # Build response based on arguments
         message_parts = []
-        
+
         # Greeting in different languages
         greetings = {
             "en": greeting,
             "es": "Hola",
-            "fr": "Bonjour", 
+            "fr": "Bonjour",
             "de": "Hallo"
         }
-        
+
         selected_greeting = greetings.get(language, greeting)
         message_parts.append(f"{selected_greeting}, {target_name}!")
-        
+
         # Add user info if provided
         if user_info:
             if "role" in user_info:
                 message_parts.append(f"Role: {user_info['role']}")
             if "team" in user_info:
                 message_parts.append(f"Team: {user_info['team']}")
-        
+
         # Add timestamp if requested
         if include_time:
             import datetime
             message_parts.append(f"Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        
+
         return [types.TextContent(
             type="text",
             text="\n".join(message_parts)
@@ -256,20 +256,20 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
 
     @app.call_tool()
     async def greetingJson_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
-        import json
         import datetime
-        
+        import json
+
         # Extract arguments
         target_name = arguments.get("name", "World")
         include_details = arguments.get("include_details", False)
         preferences = arguments.get("preferences", {})
-        
+
         # Build JSON response
         response = {
             "greeting": f"Hello, {target_name}!",
             "timestamp": datetime.datetime.now().isoformat()
         }
-        
+
         if include_details:
             response["user"] = {
                 "name": target_name,
@@ -279,7 +279,7 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 "name": "mcp-server-with-coverage",
                 "version": "1.0.0"
             }
-        
+
         return [types.TextContent(
             type="text",
             text=json.dumps(response, indent=2)
@@ -304,7 +304,7 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 }
             ),
             types.Tool(
-                name="example:greetingJson", 
+                name="example:greetingJson",
                 description="Greet someone and return structured JSON response",
                 inputSchema=JSON_SCHEMAS["example:greetingJson:args"],
                 annotations=types.ToolAnnotations(
@@ -313,7 +313,7 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 ),
                 meta={
                     "args_schema_resource": "example:greetingJson:args:schema",
-                    "result_schema_resource": "example:greetingJson:result:schema", 
+                    "result_schema_resource": "example:greetingJson:result:schema",
                     "result_mime_type": "application/json"
                 }
             )
@@ -323,7 +323,7 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
     @app.list_resources()
     async def list_resources() -> List[types.Resource]:
         resources = []
-        
+
         # Add regular text resources
         for name, data in SAMPLE_RESOURCES.items():
             resources.append(types.Resource(
@@ -333,7 +333,7 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 description=f"A sample text resource named {name}",
                 mimeType="text/plain",
             ))
-        
+
         # Add JSON schema resources
         for schema_name in JSON_SCHEMAS.keys():
             resource_name = f"{schema_name}:schema"
@@ -344,18 +344,18 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 description=f"JSON Schema definition for {schema_name}",
                 mimeType="application/schema+json",
             ))
-        
+
         return resources
 
     @app.read_resource()
     async def read_resource(uri: AnyUrl) -> List[ReadResourceContents]:
         import json
         uri_str = str(uri)
-        
+
         # Handle file:// resources
         if uri_str.startswith("file:///"):
             resource_name = uri_str.replace("file:///", "")
-            
+
             # Handle schema resources (end with :schema.json)
             if resource_name.endswith(":schema.json"):
                 schema_key = resource_name.replace(":schema.json", "")
@@ -364,12 +364,12 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                         code=404,
                         message=f"Schema not found: {schema_key}"
                     ))
-                
+
                 return [ReadResourceContents(
                     content=json.dumps(JSON_SCHEMAS[schema_key], indent=2),
                     mime_type="application/schema+json"
                 )]
-            
+
             # Handle regular text resources (end with .txt)
             elif resource_name.endswith(".txt"):
                 name = resource_name.replace(".txt", "")
@@ -378,12 +378,12 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                         code=404,
                         message=f"Resource not found: {name}"
                     ))
-                    
+
                 return [ReadResourceContents(
                     content=SAMPLE_RESOURCES[name]["content"],
                     mime_type="text/plain"
                 )]
-        
+
         # Fallback for other URI formats
         raise McpError(types.ErrorData(
             code=404,
@@ -413,7 +413,7 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 def signal_handler(s: int = sig) -> None:
                     asyncio.create_task(graceful_shutdown(app, cov, s))
                 loop.add_signal_handler(sig, signal_handler)
-            
+
             logger.info("Server started")
             # Run the session manager
             async with session_manager.run():
@@ -430,10 +430,11 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
         lifespan=lifespan,
     )
 
+
 async def run_server(port: int = 8000, enable_coverage: bool = False) -> None:
     """Run the server with optional coverage support"""
     starlette_app = create_mcp_server(enable_coverage=enable_coverage)
-    
+
     import uvicorn
     config = uvicorn.Config(
         starlette_app,
@@ -442,7 +443,7 @@ async def run_server(port: int = 8000, enable_coverage: bool = False) -> None:
         log_level="info",
     )
     server = uvicorn.Server(config)
-    
+
     try:
         await server.serve()
     except KeyboardInterrupt:
@@ -459,11 +460,12 @@ async def run_server(port: int = 8000, enable_coverage: bool = False) -> None:
         except Exception as e:
             logger.error(f"Error during server cleanup: {e}")
 
+
 @click.command()
 @click.option(
-    '--port', 
-    default=8001, 
-    type=int, 
+    '--port',
+    default=8001,
+    type=int,
     help='Port number to run the MCP server on (default: 8001)'
 )
 @click.option(
@@ -477,10 +479,10 @@ def main(port: int, coverage: bool) -> None:
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    
+
     # Global coverage instance for atexit handler
     global_coverage: Optional[Coverage] = None
-    
+
     def cleanup_coverage():
         """Emergency coverage cleanup on process exit"""
         if global_coverage is not None and HAS_COVERAGE and coverage:
@@ -491,13 +493,13 @@ def main(port: int, coverage: bool) -> None:
                 logger.info("Emergency coverage data saved")
             except Exception as e:
                 logger.error(f"Error in emergency coverage cleanup: {e}")
-    
+
     if coverage and HAS_COVERAGE:
         atexit.register(cleanup_coverage)
         print(f"🚀 Starting MCP server on port {port} with coverage enabled")
     else:
         print(f"🚀 Starting MCP server on port {port}")
-    
+
     try:
         asyncio.run(run_server(port=port, enable_coverage=coverage))
     except Exception as e:

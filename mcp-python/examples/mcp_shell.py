@@ -9,45 +9,48 @@ and provides commands to list tools/resources and call them interactively.
 import asyncio
 import json
 import logging
-import click
-import jsonschema
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
+import click
+import jsonschema
+import mcp.types as types
+from mcp.client.session import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
 from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import WordCompleter, CompleteEvent, Completion, Completer, merge_completers
+from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.completion import (
+    CompleteEvent,
+    Completer,
+    Completion,
+    WordCompleter,
+)
 from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory
-from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.styles import Style
-from prompt_toolkit.lexers import PygmentsLexer
-
-from mcp.client.session import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
-import mcp.types as types
 
 logger = logging.getLogger(__name__)
 
 
 class JSONCompleter(Completer):
     """Enhanced JSON completion helper with schema support."""
-    
+
     def __init__(self, schema: Optional[Dict[str, Any]] = None):
         self.schema = schema
-    
+
     def get_completions(self, document: Document, complete_event: CompleteEvent):
         text_before_cursor = document.text_before_cursor
         text_after_cursor = document.text_after_cursor
-        
+
         # Find JSON argument part (after tool name)
         lines = text_before_cursor.split('\n')
         current_line = lines[-1] if lines else ""
-        
+
         # Check if we're in a tool call context
         if not current_line.startswith('call '):
             return
-            
+
         # Extract the JSON part after tool name
         parts = current_line.split(' ', 2)
         if len(parts) < 3:
@@ -56,15 +59,15 @@ class JSONCompleter(Completer):
             yield Completion('{}', start_position=0)
             yield Completion('{"', start_position=0)
             return
-            
+
         json_part = parts[2]
-        
+
         # Analyze JSON context
         yield from self._provide_json_completions(json_part, document)
-    
+
     def _provide_json_completions(self, json_part: str, document: Document):
         """Provide contextual JSON completions."""
-        
+
         # If empty or just whitespace, suggest object start
         if not json_part.strip():
             yield Completion('{', start_position=0)
@@ -84,12 +87,12 @@ class JSONCompleter(Completer):
                             required_json_parts.append(f'"{prop}": true')
                         else:
                             required_json_parts.append(f'"{prop}": ""')
-                    
+
                     if required_json_parts:
                         json_template = '{ ' + ', '.join(required_json_parts) + ' }'
                         yield Completion(json_template, start_position=0, display=f"Template with required fields")
             return
-            
+
         # If we have an opening brace but no closing, suggest properties
         if json_part.strip() == '{':
             yield Completion('"', start_position=0)
@@ -97,7 +100,7 @@ class JSONCompleter(Completer):
                 for prop_name, prop_schema in self.schema['properties'].items():
                     prop_type = prop_schema.get('type', 'string')
                     description = prop_schema.get('description', '')
-                    
+
                     # Create completion with appropriate value template
                     if prop_type == 'string':
                         completion = f'"{prop_name}": ""'
@@ -111,14 +114,14 @@ class JSONCompleter(Completer):
                     else:
                         completion = f'"{prop_name}": '
                         display = f'"{prop_name}" - {description}'
-                    
+
                     yield Completion(
-                        completion, 
+                        completion,
                         start_position=0,
                         display=display
                     )
             return
-            
+
         # If we're after a comma, suggest next property
         if json_part.strip().endswith(','):
             yield Completion(' "', start_position=0)
@@ -130,13 +133,13 @@ class JSONCompleter(Completer):
                     import re
                     for match in re.finditer(r'"([^"]+)":', json_part):
                         used_props.add(match.group(1))
-                    
+
                     # Suggest unused properties
                     for prop_name, prop_schema in self.schema['properties'].items():
                         if prop_name not in used_props:
                             prop_type = prop_schema.get('type', 'string')
                             description = prop_schema.get('description', '')
-                            
+
                             if prop_type == 'string':
                                 completion = f' "{prop_name}": ""'
                             elif prop_type == 'boolean':
@@ -145,17 +148,17 @@ class JSONCompleter(Completer):
                                 completion = f' "{prop_name}": {{}}'
                             else:
                                 completion = f' "{prop_name}": '
-                                
+
                             yield Completion(
                                 completion,
                                 start_position=0,
                                 display=f'"{prop_name}" - {description}'
                             )
-                except:
+                except BaseException:
                     # If parsing fails, just suggest quote
                     yield Completion(' "', start_position=0)
             return
-            
+
         # If we're typing a property name (after quote)
         if '"' in json_part and json_part.count('"') % 2 == 1:
             # We're inside a property name
@@ -164,7 +167,7 @@ class JSONCompleter(Completer):
                 last_quote = json_part.rfind('"')
                 if last_quote >= 0:
                     partial_prop = json_part[last_quote + 1:]
-                    
+
                     for prop_name in self.schema['properties'].keys():
                         if prop_name.startswith(partial_prop):
                             remaining = prop_name[len(partial_prop):]
@@ -175,22 +178,22 @@ class JSONCompleter(Completer):
 
 class DynamicMCPCompleter(Completer):
     """Dynamic completer that provides different completions based on context."""
-    
+
     def __init__(self, shell: 'MCPShell'):
         self.shell = shell
-    
+
     def get_completions(self, document: Document, complete_event: CompleteEvent):
         text = document.text_before_cursor
-        
+
         # Check if we're in a tool call
         lines = text.split('\n')
         current_line = lines[-1] if lines else ""
-        
+
         if current_line.startswith('call '):
             parts = current_line.split(' ', 2)
             if len(parts) >= 2:
                 tool_name = parts[1]
-                
+
                 # Only provide JSON completions if we have a valid tool name
                 # and there's either a third part (JSON arg) or space after tool name
                 if tool_name and (len(parts) >= 3 or current_line.endswith(' ')):
@@ -199,17 +202,17 @@ class DynamicMCPCompleter(Completer):
                         # Get schema for this tool
                         schema_key = f"{tool_name}:args"
                         schema = self.shell.schemas.get(schema_key)
-                        
+
                         # Create JSON completer with tool-specific schema
                         json_completer = JSONCompleter(schema)
                         yield from json_completer.get_completions(document, complete_event)
                         return
-        
+
         # Default command completion
         completions = list(self.shell.commands.keys())
         completions.extend([tool.name for tool in self.shell.tools])
         completions.extend([resource.name for resource in self.shell.resources])
-        
+
         word_completer = WordCompleter(completions, ignore_case=True)
         yield from word_completer.get_completions(document, complete_event)
 
@@ -223,7 +226,7 @@ class MCPShell:
         self.tools: List[types.Tool] = []
         self.resources: List[types.Resource] = []
         self.schemas: Dict[str, Dict[str, Any]] = {}  # Cache for JSON schemas
-        
+
         # Setup prompt toolkit with dynamic completer
         self.completer = DynamicMCPCompleter(self)
         self.prompt_session = PromptSession(
@@ -238,7 +241,7 @@ class MCPShell:
             }),
             complete_while_typing=True
         )
-        
+
         # Available commands
         self.commands = {
             'help': self._cmd_help,
@@ -254,7 +257,7 @@ class MCPShell:
     async def connect(self) -> None:
         """Connect to the MCP server."""
         print(f"🔗 Connecting to MCP server at {self.server_url}...")
-        
+
         try:
             async with streamablehttp_client(
                 url=self.server_url,
@@ -266,20 +269,20 @@ class MCPShell:
                     print("⚡ Starting session initialization...")
                     await session.initialize()
                     print("✨ Session initialization complete!")
-                    
+
                     session_id = get_session_id() if get_session_id else None
                     if session_id:
                         print(f"📋 Session ID: {session_id}")
-                    
+
                     # Fetch initial server capabilities
                     await self._refresh_server_info()
-                    
+
                     print(f"✅ Connected successfully!")
                     print(f"Found {len(self.tools)} tools and {len(self.resources)} resources")
-                    
+
                     # Start interactive shell
                     await self._run_interactive_shell()
-                    
+
         except Exception as e:
             print(f"❌ Failed to connect: {e}")
             logger.exception("Connection failed")
@@ -288,21 +291,21 @@ class MCPShell:
         """Refresh the list of available tools and resources."""
         if not self.session:
             return
-            
+
         try:
             # List tools
             tools_result = await self.session.list_tools()
             self.tools = tools_result.tools if hasattr(tools_result, 'tools') else []
-            
-            # List resources  
+
+            # List resources
             resources_result = await self.session.list_resources()
             self.resources = resources_result.resources if hasattr(resources_result, 'resources') else []
-            
+
             # Cache JSON schemas from tools metadata
             await self._cache_schemas()
-            
+
             logger.info(f"Found {len(self.tools)} tools and {len(self.resources)} resources")
-            
+
         except Exception as e:
             logger.error(f"Failed to refresh server info: {e}")
             print(f"⚠️  Failed to refresh server info: {e}")
@@ -313,13 +316,13 @@ class MCPShell:
             # Get meta field from model dump (works around pydantic serialization issues)
             tool_data = tool.model_dump()
             meta = tool_data.get('meta')
-            
+
             if meta:
                 # Cache argument schema
                 if 'args_schema_resource' in meta:
                     schema_resource_name = meta['args_schema_resource']
                     await self._fetch_schema(f"{tool.name}:args", schema_resource_name)
-                
+
                 # Cache result schema
                 if 'result_schema_resource' in meta:
                     schema_uri = meta['result_schema_resource']
@@ -330,13 +333,13 @@ class MCPShell:
         try:
             if schema_key in self.schemas or not self.session:
                 return  # Already cached or no session
-                
+
             # Find the resource by name
             schema_resource = next((r for r in self.resources if r.name == schema_resource_name), None)
             if not schema_resource:
                 logger.warning(f"Schema resource not found: {schema_resource_name}")
                 return
-                
+
             result = await self.session.read_resource(schema_resource.uri)
             if hasattr(result, 'contents') and result.contents:
                 for content in result.contents:
@@ -354,14 +357,14 @@ class MCPShell:
         if schema_key not in self.schemas:
             warnings.append(f"⚠️  Schema not available for validation: {schema_key}")
             return warnings
-            
+
         try:
             jsonschema.validate(data, self.schemas[schema_key])
         except jsonschema.ValidationError as e:
             warnings.append(f"⚠️  JSON validation warning: {e.message}")
         except Exception as e:
             warnings.append(f"⚠️  Schema validation error: {e}")
-            
+
         return warnings
 
     def _format_json_output(self, content: str, mime_type: str = "application/json") -> str:
@@ -371,20 +374,20 @@ class MCPShell:
                 # Parse and reformat JSON for better display
                 parsed = json.loads(content)
                 formatted = json.dumps(parsed, indent=2)
-                
+
                 # Try to add syntax highlighting if pygments is available
                 try:
                     from pygments import highlight
-                    from pygments.lexers import JsonLexer
                     from pygments.formatters import TerminalFormatter
-                    
+                    from pygments.lexers import JsonLexer
+
                     lexer = JsonLexer()
                     formatter = TerminalFormatter()
                     return highlight(formatted, lexer, formatter).rstrip()
                 except ImportError:
                     # Fall back to plain formatting if pygments not available
                     pass
-                    
+
                 return formatted
             return content
         except json.JSONDecodeError:
@@ -394,22 +397,22 @@ class MCPShell:
         """Run the interactive shell loop."""
         print("\n🐚 MCP Interactive Shell")
         print("Type 'help' for available commands or 'exit' to quit.")
-        
+
         while True:
             try:
                 # Show server info in right prompt
                 rprompt = HTML(
                     f"<rprompt>Tools: {len(self.tools)} | Resources: {len(self.resources)}</rprompt>"
                 )
-                
+
                 # Get user input - completer is already set up in the session
                 text = await self.prompt_session.prompt_async(
                     "mcp> ",
                     rprompt=rprompt
                 )
-                
+
                 await self._process_command(text.strip())
-                
+
             except (EOFError, KeyboardInterrupt):
                 print("\n👋 Goodbye!")
                 break
@@ -421,11 +424,11 @@ class MCPShell:
         """Process a command line input."""
         if not command_line:
             return
-            
+
         parts = command_line.split()
         command = parts[0].lower()
         args = parts[1:] if len(parts) > 1 else []
-        
+
         if command in self.commands:
             await self.commands[command](args)
         elif any(tool.name == command for tool in self.tools):
@@ -462,17 +465,17 @@ class MCPShell:
     async def _cmd_list_tools(self, args: List[str]) -> None:
         """List available tools."""
         await self._refresh_server_info()
-        
+
         if not self.tools:
             print("🔧 No tools available")
             return
-            
+
         print(f"\n🔧 Available tools ({len(self.tools)}):")
         for i, tool in enumerate(self.tools, 1):
             print(f"  {i}. {tool.name}")
             if tool.description:
                 print(f"     {tool.description}")
-            
+
             # Show metadata info
             tool_data = tool.model_dump()
             meta = tool_data.get('meta')
@@ -483,14 +486,14 @@ class MCPShell:
                     print(f"     📋 Args schema: {meta['args_schema_resource']}")
                 if 'result_schema_resource' in meta:
                     print(f"     📋 Result schema: {meta['result_schema_resource']}")
-                    
+
             # Show input schema summary if available
             if hasattr(tool, 'inputSchema') and tool.inputSchema:
                 required_params = tool.inputSchema.get('required', [])
                 if required_params:
                     print(f"     Required: {', '.join(required_params)}")
-                    
-                # Show available properties 
+
+                # Show available properties
                 if 'properties' in tool.inputSchema:
                     props = list(tool.inputSchema['properties'].keys())
                     if props:
@@ -500,11 +503,11 @@ class MCPShell:
     async def _cmd_list_resources(self, args: List[str]) -> None:
         """List available resources."""
         await self._refresh_server_info()
-        
+
         if not self.resources:
             print("📄 No resources available")
             return
-            
+
         print(f"\n📄 Available resources ({len(self.resources)}):")
         for i, resource in enumerate(self.resources, 1):
             print(f"  {i}. {resource.name}")
@@ -519,21 +522,21 @@ class MCPShell:
         if not self.session:
             print("❌ Not connected to server")
             return
-            
+
         if not args:
             print("❌ Usage: call <tool_name> [arguments...]")
             print("Example: call example:greet {\"name\": \"Alice\"}")
             return
-            
+
         tool_name = args[0]
-        
+
         # Check if tool exists
         tool = next((t for t in self.tools if t.name == tool_name), None)
         if not tool:
             print(f"❌ Unknown tool: {tool_name}")
             print("Use 'tools' command to see available tools.")
             return
-            
+
         # Parse arguments with helpful error messages
         arguments = {}
         if len(args) > 1:
@@ -544,7 +547,7 @@ class MCPShell:
             except json.JSONDecodeError as e:
                 print(f"❌ Invalid JSON arguments: {e}")
                 print("Example: call example:greet {\"name\": \"Alice\"}")
-                
+
                 # Show schema-based help if available
                 schema_key = f"{tool_name}:args"
                 if schema_key in self.schemas:
@@ -558,18 +561,18 @@ class MCPShell:
                             req_marker = " (required)" if required else ""
                             print(f"  • {prop}: {prop_type}{req_marker} - {description}")
                 return
-                
+
         # Validate arguments against schema if available
         schema_key = f"{tool_name}:args"
         if arguments:
             warnings = self._validate_json_with_schema(arguments, schema_key)
             for warning in warnings:
                 print(warning)
-        
+
         try:
             print(f"🔧 Calling tool '{tool_name}'...")
             result = await self.session.call_tool(tool_name, arguments)
-            
+
             print(f"\n✅ Tool '{tool_name}' result:")
             if hasattr(result, 'content') and result.content:
                 # Check if this tool returns JSON based on metadata
@@ -578,14 +581,14 @@ class MCPShell:
                 meta = tool_data.get('meta')
                 if meta and 'result_mime_type' in meta:
                     is_json_tool = meta['result_mime_type'] == "application/json"
-                
+
                 for content in result.content:
                     if hasattr(content, 'type') and content.type == "text":
                         if is_json_tool:
                             # This is JSON content even though type is "text"
-                            formatted = self._format_json_output(content.text, "application/json") 
+                            formatted = self._format_json_output(content.text, "application/json")
                             print(f"📄 JSON Response:\n{formatted}")
-                            
+
                             # Validate result against schema if available
                             result_schema_key = f"{tool_name}:result"
                             try:
@@ -609,7 +612,7 @@ class MCPShell:
                         print(content)
             else:
                 print(result)
-                
+
         except Exception as e:
             print(f"❌ Failed to call tool '{tool_name}': {e}")
             logger.exception(f"Tool call failed: {tool_name}")
@@ -619,24 +622,24 @@ class MCPShell:
         if not self.session:
             print("❌ Not connected to server")
             return
-            
+
         if not args:
             print("❌ Usage: read <resource_name>")
             return
-            
+
         resource_name = args[0]
-        
+
         # Find resource by name
         resource = next((r for r in self.resources if r.name == resource_name), None)
         if not resource:
             print(f"❌ Unknown resource: {resource_name}")
             print("Use 'resources' command to see available resources.")
             return
-            
+
         try:
             print(f"📄 Reading resource '{resource_name}'...")
             result = await self.session.read_resource(resource.uri)
-            
+
             print(f"\n✅ Resource '{resource_name}' content:")
             if hasattr(result, 'contents') and result.contents:
                 for content in result.contents:
@@ -660,7 +663,7 @@ class MCPShell:
                         print(str(content))
             else:
                 print(result)
-                
+
         except Exception as e:
             print(f"❌ Failed to read resource '{resource_name}': {e}")
             logger.exception(f"Resource read failed: {resource_name}")
@@ -672,31 +675,31 @@ class MCPShell:
 
 @click.command()
 @click.option(
-    '--port', 
-    default=8001, 
-    type=int, 
+    '--port',
+    default=8001,
+    type=int,
     help='Port number of the MCP server to connect to (default: 8001)'
 )
 def main(port: int) -> None:
     """Interactive MCP client shell for testing MCP servers."""
     async def run_shell():
         server_url = f"http://localhost:{port}/mcp"
-        
+
         print("🚀 MCP Interactive Shell")
         print(f"Server: {server_url}")
         print()
-        
+
         # Setup logging
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
             handlers=[logging.FileHandler('.mcp_shell.log')]
         )
-        
+
         # Start shell
         shell = MCPShell(server_url)
         await shell.connect()
-    
+
     try:
         asyncio.run(run_shell())
     except KeyboardInterrupt:
