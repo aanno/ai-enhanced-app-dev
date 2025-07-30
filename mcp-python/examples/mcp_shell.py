@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 from datetime import timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import click
 import jsonschema
@@ -776,7 +776,7 @@ class MCPShell:
 
             print(f"\n✅ Resource '{resource_name}' content:")
             if hasattr(result, 'contents') and result.contents:
-                for content in result.contents:
+                for content in cast(List[types.TextResourceContents], result.contents):
                     # Handle different resource content types
                     if hasattr(content, 'text') and content.text:
                         # Check if it's a JSON schema resource
