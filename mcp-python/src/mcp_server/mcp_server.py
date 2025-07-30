@@ -298,10 +298,8 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
         return result
 
     @app.call_tool()
-    async def greetingJson_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
+    async def greetingJson_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         import datetime
-        import json
-        import jsonschema
         
         logger.debug(f"greetingJson_tool called with name={name}, arguments={arguments}")
 
@@ -342,32 +340,13 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                 name="example:greet",
                 description="Greet someone with a customizable message in different languages",
                 inputSchema=JSON_SCHEMAS["example:greet:args"],
-                outputSchema=JSON_SCHEMAS["example:greet:result"],
-                # Custom metadata for schema references
-                annotations=types.ToolAnnotations(
-                    audience=["developer"],
-                    tags=["greeting", "text"]
-                ),
-                meta={
-                    "args_schema_resource": "example:greet:args:schema",
-                    "result_schema_resource": "example:greet:result:schema",
-                    "result_mime_type": "text/plain"
-                }
+                outputSchema=JSON_SCHEMAS["example:greet:result"]
             ),
             types.Tool(
                 name="example:greetingJson",
                 description="Greet someone and return structured JSON response",
                 inputSchema=JSON_SCHEMAS["example:greetingJson:args"],
-                outputSchema=JSON_SCHEMAS["example:greetingJson:result"],
-                annotations=types.ToolAnnotations(
-                    audience=["developer"],
-                    tags=["greeting", "json"]
-                ),
-                meta={
-                    "args_schema_resource": "example:greetingJson:args:schema",
-                    "result_schema_resource": "example:greetingJson:result:schema",
-                    "result_mime_type": "application/json"
-                }
+                outputSchema=JSON_SCHEMAS["example:greetingJson:result"]
             )
         ]
 
@@ -424,7 +403,7 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
             # Update dynamic data
             status_data = SERVER_STATUS_DATA.copy()
             status_data["server"]["uptime_seconds"] = int(time.time()) % 3600  # Simple uptime simulation
-            status_data["timestamp"] = time.time()
+            status_data["server"]["timestamp"] = str(time.time())
             
             return [ReadResourceContents(
                 content=json.dumps(status_data, indent=2),
@@ -571,7 +550,7 @@ def main(port: int, coverage: bool) -> None:
     )
 
     # Global coverage instance for atexit handler
-    global_coverage: Optional[Coverage] = None
+    global_coverage = None
 
     def cleanup_coverage():
         """Emergency coverage cleanup on process exit"""
