@@ -1,14 +1,10 @@
 # mcp-python TODO backlog
 
 * fix highlighting on client
-* fix integration tests (framework)
 * `read server-status`: number of tools.total_calls is always 0 (count this value up on calls)
-
 * there is no way to look at "example:greet:args:schema" and "example:greet:result:schema"
   + there should be new shell command for this
   + my proposal: `tool-details <toolname>` should list (among other) arg schema and result schema (highlighted)
-* convert *.py to some tests
-* fix mypy
 
 ## completion (JSON and other)
 
