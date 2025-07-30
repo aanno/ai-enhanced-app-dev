@@ -229,7 +229,7 @@ class MCPShell:
 
         # Setup prompt toolkit with dynamic completer
         self.completer = DynamicMCPCompleter(self)
-        self.prompt_session = PromptSession(
+        self.prompt_session: PromptSession = PromptSession(
             history=FileHistory('.mcp_shell_history'),
             auto_suggest=AutoSuggestFromHistory(),
             completer=self.completer,

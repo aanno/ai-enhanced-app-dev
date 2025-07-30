@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from mcp.client.client import Client
 from mcp.types import ReadResourceRequest, ToolRequest
