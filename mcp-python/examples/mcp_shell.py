@@ -414,7 +414,8 @@ class MCPShell:
 
             result = await self.session.read_resource(schema_resource.uri)
             if hasattr(result, 'contents') and result.contents:
-                for content in result.contents:
+                # TODO: handle binary content: BlobResourceContents as well
+                for content in cast(List[types.TextResourceContents], result.contents):
                     if hasattr(content, 'text'):
                         schema_data = json.loads(content.text)
                         self.schemas[schema_key] = schema_data
@@ -662,15 +663,20 @@ class MCPShell:
 
         try:
             print(f"🔧 Calling tool '{tool_name}'...")
+            # types.CallToolResult
             result = await self.session.call_tool(tool_name, arguments)
 
             # Check if this is an error result first
             if hasattr(result, 'isError') and result.isError:
                 print(f"\n❌ Tool '{tool_name}' error:")
                 if hasattr(result, 'content') and result.content:
+                    # TODO: handle other types.ContentBlock as well (not only types.TextContent)
+                    # for content in cast(types.TextContent, result.content):
                     for content in result.content:
-                        if hasattr(content, 'text') and content.text:
-                            print(f"💥 {content.text}")
+                        if hasattr(content, 'text') and c.text:
+                            # TODO: handle other types.ContentBlock as well (not only types.TextContent)
+                            c: types.TextContent = cast(types.TextContent, content)
+                            print(f"💥 {c.text}")
                 else:
                     print("Unknown error occurred")
                 return
@@ -776,6 +782,7 @@ class MCPShell:
 
             print(f"\n✅ Resource '{resource_name}' content:")
             if hasattr(result, 'contents') and result.contents:
+                # TODO: handle binary content: BlobResourceContents as well
                 for content in cast(List[types.TextResourceContents], result.contents):
                     # Handle different resource content types
                     if hasattr(content, 'text') and content.text:
