@@ -222,11 +222,8 @@ async def graceful_shutdown(
     except Exception as e:
         logger.error(f"Error stopping server: {e}")
 
-    # Reset signal handler and exit
-    if signum is not None:
-        signal.signal(signum, signal.SIG_DFL)
-        if signum == signal.SIGINT:
-            raise KeyboardInterrupt()
+    # Don't re-raise KeyboardInterrupt to avoid task exception
+    logger.info("Graceful shutdown completed")
 
 
 def create_mcp_server(json_response: bool = False, enable_coverage: bool = False) -> Starlette:

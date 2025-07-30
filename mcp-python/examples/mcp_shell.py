@@ -341,9 +341,9 @@ class MCPShell:
 
         except Exception as e:
             error_msg = str(e)
-            if "TaskGroup" in error_msg or "Connection" in error_msg:
+            if "TaskGroup" in error_msg or "Connection" in error_msg or "connect" in error_msg.lower():
                 print(f"❌ Failed to connect to MCP server at {self.server_url}")
-                print("💡 Make sure the server is running. Try: python -m mcp_server.mcp_server")
+                print("💡 Make sure the server is running. Try: python -m src.mcp_server.mcp_server")
             else:
                 print(f"❌ Failed to connect: {error_msg}")
             logger.exception("Connection failed")
@@ -371,12 +371,13 @@ class MCPShell:
             error_msg = str(e)
             if "TaskGroup" in error_msg or "Connection" in error_msg or "stream" in error_msg.lower():
                 print("🔌 Lost connection to server. The server may have been stopped.")
-                print("💡 Please restart the server and try reconnecting.")
-                # Clear session to prevent further attempts
+                print("💡 Server connection lost - please restart the server.")
+                # Clear session to prevent further attempts but keep shell alive
                 self.session = None
                 self.tools = []
                 self.resources = []
                 self.schemas = {}
+                return  # Return instead of raising, keeps shell alive
             else:
                 logger.error(f"Failed to refresh server info: {e}")
                 print(f"⚠️  Failed to refresh server info: {error_msg}")
@@ -602,7 +603,7 @@ class MCPShell:
     async def _cmd_call_tool(self, args: List[str]) -> None:
         """Call a tool with arguments."""
         if not self.session:
-            print("❌ Not connected to server")
+            print("❌ Not connected to server. Please restart the server and reconnect.")
             return
 
         if not args:
@@ -680,27 +681,6 @@ class MCPShell:
                                     print(warning)
                             except json.JSONDecodeError:
                                 print("⚠️  Response is not valid JSON")
-                            
-                            # Also validate against outputSchema if tool has one
-                            tool_obj = next((t for t in self.tools if t.name == tool_name), None)
-                            if tool_obj and hasattr(tool_obj, 'outputSchema') and tool_obj.outputSchema:
-                                try:
-                                    # For text tools, we need to structure the result differently
-                                    if tool_name == "example:greet":
-                                        # Text tool returns array of TextContent objects
-                                        text_result = [{"type": "text", "text": content.text}]
-                                        jsonschema.validate(text_result, tool_obj.outputSchema)
-                                    else:
-                                        # JSON tool validates the parsed JSON directly
-                                        parsed_result = json.loads(content.text)
-                                        jsonschema.validate(parsed_result, tool_obj.outputSchema)
-                                    print("✅ Output schema validation passed")
-                                except jsonschema.ValidationError as e:
-                                    print(f"⚠️  Output schema validation warning: {e.message}")
-                                except json.JSONDecodeError:
-                                    print("⚠️  Cannot validate output schema: Response is not valid JSON")
-                                except Exception as e:
-                                    print(f"⚠️  Output schema validation error: {e}")
                         else:
                             # Check if content looks like JSON and format it
                             try:
@@ -711,36 +691,44 @@ class MCPShell:
                             except json.JSONDecodeError:
                                 # Not JSON, print as plain text
                                 print(content.text)
-                            
-                            # Validate against outputSchema for non-JSON tools too
-                            tool_obj = next((t for t in self.tools if t.name == tool_name), None)
-                            if tool_obj and hasattr(tool_obj, 'outputSchema') and tool_obj.outputSchema:
-                                try:
-                                    if tool_name == "example:greet":
-                                        # Text tool returns array of TextContent objects
-                                        text_result = [{"type": "text", "text": content.text}]
-                                        jsonschema.validate(text_result, tool_obj.outputSchema)
-                                        print("✅ Output schema validation passed")
-                                    else:
-                                        # Try to validate JSON content if possible
-                                        try:
-                                            parsed_result = json.loads(content.text)
-                                            jsonschema.validate(parsed_result, tool_obj.outputSchema)
-                                            print("✅ Output schema validation passed")
-                                        except json.JSONDecodeError:
-                                            print("⚠️  Cannot validate output schema: Response is not valid JSON")
-                                except jsonschema.ValidationError as e:
-                                    print(f"⚠️  Output schema validation warning: {e.message}")
-                                except Exception as e:
-                                    print(f"⚠️  Output schema validation error: {e}")
+                        
+                        # Validate against outputSchema if tool has one (do this once for both cases)
+                        tool_obj = next((t for t in self.tools if t.name == tool_name), None)
+                        if tool_obj and hasattr(tool_obj, 'outputSchema') and tool_obj.outputSchema:
+                            try:
+                                if tool_name == "example:greet":
+                                    # Text tool returns array of TextContent objects
+                                    text_result = [{"type": "text", "text": content.text}]
+                                    jsonschema.validate(text_result, tool_obj.outputSchema)
+                                else:
+                                    # JSON tool validates the parsed JSON directly
+                                    parsed_result = json.loads(content.text)
+                                    jsonschema.validate(parsed_result, tool_obj.outputSchema)
+                                print("✅ Output schema validation passed")
+                            except jsonschema.ValidationError as e:
+                                print(f"⚠️  Output schema validation warning: {e.message}")
+                            except json.JSONDecodeError:
+                                print("⚠️  Cannot validate output schema: Response is not valid JSON")
+                            except Exception as e:
+                                print(f"⚠️  Output schema validation error: {e}")
                     else:
                         print(content)
             else:
                 print(result)
 
         except Exception as e:
-            print(f"❌ Failed to call tool '{tool_name}': {e}")
-            logger.exception(f"Tool call failed: {tool_name}")
+            error_msg = str(e)
+            if "TaskGroup" in error_msg or "Connection" in error_msg or "stream" in error_msg.lower():
+                print("🔌 Lost connection to server during tool call.")
+                print("💡 Server connection lost - please restart the server and try again.")
+                # Clear session but keep shell alive
+                self.session = None
+                self.tools = []
+                self.resources = []
+                self.schemas = {}
+            else:
+                print(f"❌ Failed to call tool '{tool_name}': {e}")
+                logger.exception(f"Tool call failed: {tool_name}")
 
     async def _cmd_read_resource(self, args: List[str]) -> None:
         """Read a resource."""
