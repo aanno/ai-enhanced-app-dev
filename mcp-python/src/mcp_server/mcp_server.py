@@ -5,6 +5,7 @@ import json
 import logging
 import anyio
 import click
+import atexit
 from typing import AsyncIterator, Optional, Any, Dict, List
 from types import FrameType
 
@@ -45,21 +46,34 @@ SAMPLE_RESOURCES = {
 }
 
 @contextlib.asynccontextmanager
-async def coverage_context() -> AsyncIterator[Optional[Coverage]]:
-    """Context manager for coverage collection"""
+async def coverage_context(enable_coverage: bool = False) -> AsyncIterator[Optional[Coverage]]:
+    """Context manager for coverage collection with robust cleanup"""
     cov: Optional[Coverage] = None
-    if HAS_COVERAGE:
-        cov = coverage.Coverage()
-        cov.start()
-        logger.info("Coverage collection started")
+    if HAS_COVERAGE and enable_coverage:
+        try:
+            cov = coverage.Coverage()
+            cov.start()
+            logger.info("Coverage collection started")
+        except Exception as e:
+            logger.error(f"Failed to start coverage: {e}")
+            cov = None
     
     try:
         yield cov
     finally:
         if cov is not None:
-            cov.stop()
-            cov.save()
-            logger.info("Coverage data saved to .coverage")
+            try:
+                logger.info("Stopping coverage collection...")
+                cov.stop()
+                cov.save()
+                logger.info("Coverage data saved to .coverage")
+            except Exception as e:
+                logger.error(f"Error saving coverage data: {e}")
+                # Try to save anyway with basic filename
+                try:
+                    cov.save()
+                except Exception:
+                    pass
 
 async def graceful_shutdown(
     server: Any,
@@ -67,20 +81,33 @@ async def graceful_shutdown(
     signum: Optional[int] = None,
     frame: Optional[FrameType] = None
 ) -> None:
-    """Handle graceful shutdown with coverage saving"""
-    logger.info("\nShutting down gracefully...")
-    if hasattr(server, 'stop'):
-        await server.stop()
+    """Handle graceful shutdown with robust coverage saving"""
+    logger.info(f"\nReceived signal {signum}, shutting down gracefully...")
+    
+    # Save coverage data first (most important)
     if cov is not None:
-        cov.stop()
-        cov.save()
-        logger.info("Coverage data saved to .coverage")
+        try:
+            logger.info("Saving coverage data on shutdown...")
+            cov.stop()
+            cov.save()
+            logger.info("Coverage data saved to .coverage")
+        except Exception as e:
+            logger.error(f"Error saving coverage on shutdown: {e}")
+    
+    # Stop server
+    try:
+        if hasattr(server, 'stop'):
+            await server.stop()
+    except Exception as e:
+        logger.error(f"Error stopping server: {e}")
+    
+    # Reset signal handler and exit
     if signum is not None:
         signal.signal(signum, signal.SIG_DFL)
         if signum == signal.SIGINT:
             raise KeyboardInterrupt()
 
-def create_mcp_server(json_response: bool = False) -> Starlette:
+def create_mcp_server(json_response: bool = False, enable_coverage: bool = False) -> Starlette:
     """Create the MCP server application with both tools and resources"""
     app: Server = Server("mcp-server-with-coverage")
 
@@ -162,7 +189,7 @@ def create_mcp_server(json_response: bool = False) -> Starlette:
     @contextlib.asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         """Lifespan context with coverage support"""
-        async with coverage_context() as cov:
+        async with coverage_context(enable_coverage) as cov:
             # Set up signal handlers
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGTERM, signal.SIGINT):
@@ -186,9 +213,9 @@ def create_mcp_server(json_response: bool = False) -> Starlette:
         lifespan=lifespan,
     )
 
-async def run_server(port: int = 8000) -> None:
-    """Run the server with coverage support"""
-    starlette_app = create_mcp_server()
+async def run_server(port: int = 8000, enable_coverage: bool = False) -> None:
+    """Run the server with optional coverage support"""
+    starlette_app = create_mcp_server(enable_coverage=enable_coverage)
     
     import uvicorn
     config = uvicorn.Config(
@@ -202,12 +229,18 @@ async def run_server(port: int = 8000) -> None:
     try:
         await server.serve()
     except KeyboardInterrupt:
-        pass
+        logger.info("Received KeyboardInterrupt, shutting down...")
+    except Exception as e:
+        logger.error(f"Server error: {e}")
+        raise
     finally:
-        if not server.started:
-            await server.startup()
-        if server.started and not server.should_exit:
-            await server.shutdown()
+        try:
+            if not server.started:
+                await server.startup()
+            if server.started and not server.should_exit:
+                await server.shutdown()
+        except Exception as e:
+            logger.error(f"Error during server cleanup: {e}")
 
 @click.command()
 @click.option(
@@ -216,15 +249,43 @@ async def run_server(port: int = 8000) -> None:
     type=int, 
     help='Port number to run the MCP server on (default: 8001)'
 )
-def main(port: int) -> None:
-    """Start the MCP server with coverage support."""
+@click.option(
+    '--coverage',
+    is_flag=True,
+    help='Enable code coverage collection during server execution'
+)
+def main(port: int, coverage: bool) -> None:
+    """Start the MCP server with optional coverage support."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     
-    print(f"🚀 Starting MCP server on port {port}")
-    asyncio.run(run_server(port=port))
+    # Global coverage instance for atexit handler
+    global_coverage: Optional[Coverage] = None
+    
+    def cleanup_coverage():
+        """Emergency coverage cleanup on process exit"""
+        if global_coverage is not None and HAS_COVERAGE and coverage:
+            try:
+                logger.info("Emergency coverage cleanup on exit...")
+                global_coverage.stop()
+                global_coverage.save()
+                logger.info("Emergency coverage data saved")
+            except Exception as e:
+                logger.error(f"Error in emergency coverage cleanup: {e}")
+    
+    if coverage and HAS_COVERAGE:
+        atexit.register(cleanup_coverage)
+        print(f"🚀 Starting MCP server on port {port} with coverage enabled")
+    else:
+        print(f"🚀 Starting MCP server on port {port}")
+    
+    try:
+        asyncio.run(run_server(port=port, enable_coverage=coverage))
+    except Exception as e:
+        logger.error(f"Fatal server error: {e}")
+        raise
 
 
 if __name__ == "__main__":
