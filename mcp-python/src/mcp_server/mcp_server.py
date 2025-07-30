@@ -300,10 +300,39 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
     @app.call_tool()
     async def greetingJson_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         import datetime
+        import jsonschema
+        from mcp.shared.exceptions import McpError
         
         logger.debug(f"greetingJson_tool called with name={name}, arguments={arguments}")
 
-        # Extract arguments
+        # Validate input arguments against schema
+        try:
+            jsonschema.validate(arguments, JSON_SCHEMAS["example:greetingJson:args"])
+        except jsonschema.ValidationError as e:
+            logger.debug(f"Input validation failed: {e.message}")
+            # For JSON tools, we should raise an McpError to return a proper protocol-level error
+            # This will be handled by the MCP framework as a JSON-RPC error response
+            raise McpError(types.ErrorData(
+                code=-32602,  # Invalid params
+                message=f"Input validation error: {e.message}",
+                data={
+                    "details": f"Invalid argument structure for {name}",
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "schema_path": list(e.absolute_path) if hasattr(e, 'absolute_path') else []
+                }
+            ))
+        except Exception as e:
+            logger.debug(f"Unexpected validation error: {e}")
+            raise McpError(types.ErrorData(
+                code=-32603,  # Internal error
+                message="Input validation failed",
+                data={
+                    "details": str(e),
+                    "timestamp": datetime.datetime.now().isoformat()
+                }
+            ))
+
+        # Extract validated arguments
         target_name = arguments.get("name", "World")
         include_details = arguments.get("include_details", False)
         preferences = arguments.get("preferences", {})
