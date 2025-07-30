@@ -326,7 +326,7 @@ class MCPShell:
                     await session.initialize()
                     print("✨ Session initialization complete!")
 
-                    session_id = get_session_id() if get_session_id else None
+                    session_id = get_session_id() # if get_session_id else None
                     if session_id:
                         print(f"📋 Session ID: {session_id}")
 
@@ -772,7 +772,7 @@ class MCPShell:
 
         try:
             print(f"📄 Reading resource '{resource_name}'...")
-            result = await self.session.read_resource(resource.uri)
+            result: types.ReadResourceResult = await self.session.read_resource(resource.uri)
 
             print(f"\n✅ Resource '{resource_name}' content:")
             if hasattr(result, 'contents') and result.contents:
