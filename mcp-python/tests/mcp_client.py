@@ -32,9 +32,15 @@ class MCPTestClient:
     async def close(self):
         """Close the connection"""
         if self._session_context:
-            await self._session_context.__aexit__(None, None, None)
+            try:
+                await self._session_context.__aexit__(None, None, None)
+            except Exception:
+                pass  # Ignore context exit errors during cleanup
         if self._client_context:
-            await self._client_context.__aexit__(None, None, None)
+            try:
+                await self._client_context.__aexit__(None, None, None)
+            except Exception:
+                pass  # Ignore context exit errors during cleanup
 
     async def __aenter__(self):
         await self.connect()

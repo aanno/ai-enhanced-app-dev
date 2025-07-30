@@ -245,7 +245,19 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
 
     # Tool endpoints
     @app.call_tool()
-    async def greet_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
+    async def handle_tool_calls(name: str, arguments: Dict[str, Any]):
+        """Route tool calls to appropriate handlers"""
+        if name == "example:greet":
+            return await greet_tool_impl(name, arguments)
+        elif name == "example:greetingJson":
+            return await greetingJson_tool_impl(name, arguments)
+        else:
+            raise McpError(types.ErrorData(
+                code=-32601,
+                message=f"Tool not found: {name}"
+            ))
+    
+    async def greet_tool_impl(name: str, arguments: Dict[str, Any]) -> List[Dict[str, Any]]:
         import jsonschema
         
         # Handle various argument types
@@ -281,24 +293,24 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
             import datetime
             message_parts.append(f"Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-        result = [types.TextContent(
-            type="text",
-            text="\n".join(message_parts)
-        )]
+        # For MCP tools with outputSchema, return the structured data directly
+        # that matches the schema format exactly
+        result_data = [{
+            "type": "text",
+            "text": "\n".join(message_parts)
+        }]
         
         # Validate result against output schema
         try:
-            result_data = [{"type": "text", "text": result[0].text}]
             jsonschema.validate(result_data, JSON_SCHEMAS["example:greet:result"])
         except jsonschema.ValidationError as e:
             logger.warning(f"Tool result validation failed for example:greet: {e.message}")
         except Exception as e:
             logger.warning(f"Result validation error for example:greet: {e}")
         
-        return result
+        return result_data
 
-    @app.call_tool()
-    async def greetingJson_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def greetingJson_tool_impl(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         import datetime
         import jsonschema
         from mcp.shared.exceptions import McpError
