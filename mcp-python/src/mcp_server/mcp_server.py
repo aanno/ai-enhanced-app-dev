@@ -40,6 +40,9 @@ SAMPLE_RESOURCES = {
 }
 
 # Contextual data resource - independent from schemas
+# Global tool call counter
+TOOL_CALL_COUNT = 0
+
 SERVER_STATUS_DATA = {
     "server": {
         "name": "mcp-server-with-coverage",
@@ -50,7 +53,7 @@ SERVER_STATUS_DATA = {
     },
     "tools": {
         "available": ["example:greet", "example:greetingJson"],
-        "total_calls": 0
+        "total_calls": 0  # This will be updated dynamically
     },
     "resources": {
         "available": 3,
@@ -247,6 +250,9 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
     @app.call_tool()
     async def handle_tool_calls(name: str, arguments: Dict[str, Any]):
         """Route tool calls to appropriate handlers"""
+        global TOOL_CALL_COUNT
+        TOOL_CALL_COUNT += 1  # Increment counter for every tool call
+        
         if name == "example:greet":
             return await greet_tool_impl(name, arguments)
         elif name == "example:greetingJson":
@@ -456,9 +462,11 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
         # Handle internal:// resources (server status)
         if uri_str == "internal:///server-status":
             # Update dynamic data
+            global TOOL_CALL_COUNT
             status_data = SERVER_STATUS_DATA.copy()
             status_data["server"]["uptime_seconds"] = int(time.time()) % 3600  # Simple uptime simulation
             status_data["server"]["timestamp"] = str(time.time())
+            status_data["tools"]["total_calls"] = TOOL_CALL_COUNT  # Update with actual call count
             
             return [ReadResourceContents(
                 content=json.dumps(status_data, indent=2),

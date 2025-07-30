@@ -216,10 +216,18 @@ class MCPShell:
                     from pygments.lexers import JsonLexer
 
                     lexer = JsonLexer()
+                    # Always use color formatting (force colors even when not in TTY)
                     formatter = TerminalFormatter()
                     highlighted = highlight(formatted, lexer, formatter).rstrip()
+                    
+                    # Debug highlighting
+                    logger.debug(f"Original JSON length: {len(formatted)}")
+                    logger.debug(f"Highlighted length: {len(highlighted)}")
+                    logger.debug(f"Contains ANSI codes: {'\\033[' in highlighted or '[' in highlighted}")
+                    
                     # Debug: check if pygments returned error text instead of formatted JSON
-                    if "error" in highlighted.lower() or len(highlighted) > len(formatted) * 3:
+                    # ANSI codes can make highlighted text 3-4x longer, so use a higher threshold
+                    if "error" in highlighted.lower() or len(highlighted) > len(formatted) * 10:
                         logger.warning(f"Pygments may have returned error, falling back to plain JSON")
                         return formatted
                     return highlighted
