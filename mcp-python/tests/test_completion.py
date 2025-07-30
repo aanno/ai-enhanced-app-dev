@@ -4,7 +4,7 @@ import pytest
 from prompt_toolkit.document import Document
 from prompt_toolkit.completion import CompleteEvent
 
-from src.mcp_server.prompt_completer import JSONCompleter, DynamicMCPCompleter
+from mcp_server.prompt_completer import JSONCompleter, DynamicMCPCompleter
 
 
 class MockTool:
