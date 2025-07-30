@@ -121,7 +121,7 @@ JSON_SCHEMAS = {
                 }
             }
         },
-        "required": []
+        "required": ["name"]
     },
     "example:greetingJson:result": {
         "type": "object",
@@ -281,7 +281,7 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
             }
         
         return [types.TextContent(
-            type="application/json",
+            type="text",
             text=json.dumps(response, indent=2)
         )]
 
@@ -298,8 +298,8 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                     tags=["greeting", "text"]
                 ),
                 meta={
-                    "args_schema_resource": "schema://example:greet:args",
-                    "result_schema_resource": "schema://example:greet:result",
+                    "args_schema_resource": "example:greet:args:schema",
+                    "result_schema_resource": "example:greet:result:schema",
                     "result_mime_type": "text/plain"
                 }
             ),
@@ -312,8 +312,8 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
                     tags=["greeting", "json"]
                 ),
                 meta={
-                    "args_schema_resource": "schema://example:greetingJson:args",
-                    "result_schema_resource": "schema://example:greetingJson:result", 
+                    "args_schema_resource": "example:greetingJson:args:schema",
+                    "result_schema_resource": "example:greetingJson:result:schema", 
                     "result_mime_type": "application/json"
                 }
             )
@@ -336,9 +336,10 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
         
         # Add JSON schema resources
         for schema_name in JSON_SCHEMAS.keys():
+            resource_name = f"{schema_name}:schema"
             resources.append(types.Resource(
-                uri=AnyUrl(f"schema://{schema_name}"),
-                name=f"schema-{schema_name.replace(':', '-')}",
+                uri=AnyUrl(f"file:///{resource_name}.json"),
+                name=resource_name,
                 title=f"JSON Schema for {schema_name}",
                 description=f"JSON Schema definition for {schema_name}",
                 mimeType="application/schema+json",
@@ -351,36 +352,43 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
         import json
         uri_str = str(uri)
         
-        # Handle schema resources
-        if uri_str.startswith("schema://"):
-            schema_name = uri_str.replace("schema://", "")
-            if schema_name not in JSON_SCHEMAS:
-                raise McpError(types.ErrorData(
-                    code=404,
-                    message=f"Schema not found: {schema_name}"
-                ))
-            
-            return [ReadResourceContents(
-                content=json.dumps(JSON_SCHEMAS[schema_name], indent=2),
-                mime_type="application/schema+json"
-            )]
-        
-        # Handle regular file resources
+        # Handle file:// resources
         if uri_str.startswith("file:///"):
-            name = uri_str.replace("file:///", "").replace(".txt", "")
-        else:
-            name = uri_str.replace(".txt", "").lstrip("/")
+            resource_name = uri_str.replace("file:///", "")
             
-        if name not in SAMPLE_RESOURCES:
-            raise McpError(types.ErrorData(
-                code=404,
-                message=f"Resource not found: {uri_str}"
-            ))
+            # Handle schema resources (end with :schema.json)
+            if resource_name.endswith(":schema.json"):
+                schema_key = resource_name.replace(":schema.json", "")
+                if schema_key not in JSON_SCHEMAS:
+                    raise McpError(types.ErrorData(
+                        code=404,
+                        message=f"Schema not found: {schema_key}"
+                    ))
+                
+                return [ReadResourceContents(
+                    content=json.dumps(JSON_SCHEMAS[schema_key], indent=2),
+                    mime_type="application/schema+json"
+                )]
             
-        return [ReadResourceContents(
-            content=SAMPLE_RESOURCES[name]["content"],
-            mime_type="text/plain"
-        )]
+            # Handle regular text resources (end with .txt)
+            elif resource_name.endswith(".txt"):
+                name = resource_name.replace(".txt", "")
+                if name not in SAMPLE_RESOURCES:
+                    raise McpError(types.ErrorData(
+                        code=404,
+                        message=f"Resource not found: {name}"
+                    ))
+                    
+                return [ReadResourceContents(
+                    content=SAMPLE_RESOURCES[name]["content"],
+                    mime_type="text/plain"
+                )]
+        
+        # Fallback for other URI formats
+        raise McpError(types.ErrorData(
+            code=404,
+            message=f"Resource not found: {uri_str}"
+        ))
 
     # Create session manager
     session_manager = StreamableHTTPSessionManager(

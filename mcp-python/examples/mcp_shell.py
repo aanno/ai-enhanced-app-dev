@@ -15,7 +15,7 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import WordCompleter, CompleteEvent, Completion
+from prompt_toolkit.completion import WordCompleter, CompleteEvent, Completion, Completer, merge_completers
 from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory
@@ -30,6 +30,166 @@ import mcp.types as types
 logger = logging.getLogger(__name__)
 
 
+class JSONCompleter(Completer):
+    """Enhanced JSON completion helper with schema support."""
+    
+    def __init__(self, schema: Optional[Dict[str, Any]] = None):
+        self.schema = schema
+    
+    def get_completions(self, document: Document, complete_event: CompleteEvent):
+        text_before_cursor = document.text_before_cursor
+        text_after_cursor = document.text_after_cursor
+        
+        # Find JSON argument part (after tool name)
+        lines = text_before_cursor.split('\n')
+        current_line = lines[-1] if lines else ""
+        
+        # Check if we're in a tool call context
+        if not current_line.startswith('call '):
+            return
+            
+        # Extract the JSON part after tool name
+        parts = current_line.split(' ', 2)
+        if len(parts) < 3:
+            # We're right after the tool name - suggest opening JSON
+            yield Completion('{', start_position=0)
+            yield Completion('{}', start_position=0)
+            yield Completion('{"', start_position=0)
+            return
+            
+        json_part = parts[2]
+        
+        # Analyze JSON context
+        self._provide_json_completions(json_part, document)
+    
+    def _provide_json_completions(self, json_part: str, document: Document):
+        """Provide contextual JSON completions."""
+        
+        # If empty or just whitespace, suggest object start
+        if not json_part.strip():
+            yield Completion('{', start_position=0)
+            yield Completion('{}', start_position=0)
+            return
+            
+        # If we have an opening brace but no closing, suggest properties
+        if json_part.strip() == '{':
+            yield Completion('"', start_position=0)
+            if self.schema and 'properties' in self.schema:
+                for prop_name, prop_schema in self.schema['properties'].items():
+                    prop_type = prop_schema.get('type', 'string')
+                    description = prop_schema.get('description', '')
+                    
+                    # Create completion with appropriate value template
+                    if prop_type == 'string':
+                        completion = f'"{prop_name}": ""'
+                        display = f'"{prop_name}": "..." - {description}'
+                    elif prop_type == 'boolean':
+                        completion = f'"{prop_name}": true'
+                        display = f'"{prop_name}": true/false - {description}'
+                    elif prop_type == 'object':
+                        completion = f'"{prop_name}": {{}}'
+                        display = f'"{prop_name}": {{}} - {description}'
+                    else:
+                        completion = f'"{prop_name}": '
+                        display = f'"{prop_name}" - {description}'
+                    
+                    yield Completion(
+                        completion, 
+                        start_position=0,
+                        display=display
+                    )
+            return
+            
+        # If we're after a comma, suggest next property
+        if json_part.strip().endswith(','):
+            yield Completion(' "', start_position=0)
+            if self.schema and 'properties' in self.schema:
+                # Find already used properties
+                try:
+                    # Simple parsing to find existing keys
+                    used_props = set()
+                    import re
+                    for match in re.finditer(r'"([^"]+)":', json_part):
+                        used_props.add(match.group(1))
+                    
+                    # Suggest unused properties
+                    for prop_name, prop_schema in self.schema['properties'].items():
+                        if prop_name not in used_props:
+                            prop_type = prop_schema.get('type', 'string')
+                            description = prop_schema.get('description', '')
+                            
+                            if prop_type == 'string':
+                                completion = f' "{prop_name}": ""'
+                            elif prop_type == 'boolean':
+                                completion = f' "{prop_name}": true'
+                            elif prop_type == 'object':
+                                completion = f' "{prop_name}": {{}}'
+                            else:
+                                completion = f' "{prop_name}": '
+                                
+                            yield Completion(
+                                completion,
+                                start_position=0,
+                                display=f'"{prop_name}" - {description}'
+                            )
+                except:
+                    # If parsing fails, just suggest quote
+                    yield Completion(' "', start_position=0)
+            return
+            
+        # If we're typing a property name (after quote)
+        if '"' in json_part and json_part.count('"') % 2 == 1:
+            # We're inside a property name
+            if self.schema and 'properties' in self.schema:
+                # Get the partial property name
+                last_quote = json_part.rfind('"')
+                if last_quote >= 0:
+                    partial_prop = json_part[last_quote + 1:]
+                    
+                    for prop_name in self.schema['properties'].keys():
+                        if prop_name.startswith(partial_prop):
+                            remaining = prop_name[len(partial_prop):]
+                            completion = remaining + '": '
+                            yield Completion(completion, start_position=0)
+            return
+
+
+class DynamicMCPCompleter(Completer):
+    """Dynamic completer that provides different completions based on context."""
+    
+    def __init__(self, shell: 'MCPShell'):
+        self.shell = shell
+    
+    def get_completions(self, document: Document, complete_event: CompleteEvent):
+        text = document.text_before_cursor
+        
+        # Check if we're in a tool call
+        lines = text.split('\n')
+        current_line = lines[-1] if lines else ""
+        
+        if current_line.startswith('call '):
+            parts = current_line.split(' ', 2)
+            if len(parts) >= 2:
+                tool_name = parts[1]
+                
+                # Get schema for this tool
+                schema_key = f"{tool_name}:args"
+                schema = self.shell.schemas.get(schema_key)
+                
+                # Create JSON completer with tool-specific schema
+                json_completer = JSONCompleter(schema)
+                yield from json_completer.get_completions(document, complete_event)
+                return
+        
+        # Default command completion
+        completions = list(self.shell.commands.keys())
+        completions.extend([tool.name for tool in self.shell.tools])
+        completions.extend([resource.name for resource in self.shell.resources])
+        
+        word_completer = WordCompleter(completions, ignore_case=True)
+        yield from word_completer.get_completions(document, complete_event)
+
+
 class MCPShell:
     """Interactive MCP client shell with JSON schema support."""
 
@@ -40,16 +200,19 @@ class MCPShell:
         self.resources: List[types.Resource] = []
         self.schemas: Dict[str, Dict[str, Any]] = {}  # Cache for JSON schemas
         
-        # Setup prompt toolkit
+        # Setup prompt toolkit with dynamic completer
+        self.completer = DynamicMCPCompleter(self)
         self.prompt_session = PromptSession(
             history=FileHistory('.mcp_shell_history'),
             auto_suggest=AutoSuggestFromHistory(),
+            completer=self.completer,
             style=Style.from_dict({
                 'rprompt': 'bg:#008800 #ffffff',
                 'completion-menu.completion': 'bg:#008888 #ffffff',
                 'completion-menu.completion.current': 'bg:#00aaaa #000000',
                 'prompt': 'bold',
-            })
+            }),
+            complete_while_typing=True
         )
         
         # Available commands
@@ -134,22 +297,28 @@ class MCPShell:
                     schema_uri = tool.meta['result_schema_resource']
                     await self._fetch_schema(f"{tool.name}:result", schema_uri)
 
-    async def _fetch_schema(self, schema_key: str, schema_uri: str) -> None:
-        """Fetch and cache a JSON schema from a resource URI."""
+    async def _fetch_schema(self, schema_key: str, schema_resource_name: str) -> None:
+        """Fetch and cache a JSON schema from a resource name."""
         try:
-            if schema_uri in self.schemas:
-                return  # Already cached
+            if schema_key in self.schemas or not self.session:
+                return  # Already cached or no session
                 
-            result = await self.session.read_resource(schema_uri)
+            # Find the resource by name
+            schema_resource = next((r for r in self.resources if r.name == schema_resource_name), None)
+            if not schema_resource:
+                logger.warning(f"Schema resource not found: {schema_resource_name}")
+                return
+                
+            result = await self.session.read_resource(schema_resource.uri)
             if hasattr(result, 'contents') and result.contents:
                 for content in result.contents:
                     if hasattr(content, 'text'):
                         schema_data = json.loads(content.text)
                         self.schemas[schema_key] = schema_data
-                        logger.debug(f"Cached schema for {schema_key}")
+                        logger.info(f"✅ Cached schema for {schema_key}")
                         break
         except Exception as e:
-            logger.warning(f"Failed to fetch schema {schema_uri}: {e}")
+            logger.warning(f"Failed to fetch schema {schema_resource_name}: {e}")
 
     def _validate_json_with_schema(self, data: Dict[str, Any], schema_key: str) -> List[str]:
         """Validate JSON data against a cached schema. Returns list of warnings."""
@@ -173,7 +342,22 @@ class MCPShell:
             if mime_type == "application/json":
                 # Parse and reformat JSON for better display
                 parsed = json.loads(content)
-                return json.dumps(parsed, indent=2)
+                formatted = json.dumps(parsed, indent=2)
+                
+                # Try to add syntax highlighting if pygments is available
+                try:
+                    from pygments import highlight
+                    from pygments.lexers import JsonLexer
+                    from pygments.formatters import TerminalFormatter
+                    
+                    lexer = JsonLexer()
+                    formatter = TerminalFormatter()
+                    return highlight(formatted, lexer, formatter).rstrip()
+                except ImportError:
+                    # Fall back to plain formatting if pygments not available
+                    pass
+                    
+                return formatted
             return content
         except json.JSONDecodeError:
             return content
@@ -185,21 +369,14 @@ class MCPShell:
         
         while True:
             try:
-                # Create dynamic completer
-                completions = list(self.commands.keys())
-                completions.extend([tool.name for tool in self.tools])
-                completions.extend([resource.name for resource in self.resources])
-                completer = WordCompleter(completions, ignore_case=True)
-                
                 # Show server info in right prompt
                 rprompt = HTML(
                     f"<rprompt>Tools: {len(self.tools)} | Resources: {len(self.resources)}</rprompt>"
                 )
                 
-                # Get user input
+                # Get user input - completer is already set up in the session
                 text = await self.prompt_session.prompt_async(
                     "mcp> ",
-                    completer=completer,
                     rprompt=rprompt
                 )
                 
@@ -327,7 +504,7 @@ class MCPShell:
             print("Use 'tools' command to see available tools.")
             return
             
-        # Parse arguments
+        # Parse arguments with helpful error messages
         arguments = {}
         if len(args) > 1:
             try:
@@ -337,6 +514,19 @@ class MCPShell:
             except json.JSONDecodeError as e:
                 print(f"❌ Invalid JSON arguments: {e}")
                 print("Example: call example:greet {\"name\": \"Alice\"}")
+                
+                # Show schema-based help if available
+                schema_key = f"{tool_name}:args"
+                if schema_key in self.schemas:
+                    schema = self.schemas[schema_key]
+                    if 'properties' in schema:
+                        print(f"💡 Available parameters for {tool_name}:")
+                        for prop, prop_schema in schema['properties'].items():
+                            prop_type = prop_schema.get('type', 'any')
+                            description = prop_schema.get('description', '')
+                            required = prop in schema.get('required', [])
+                            req_marker = " (required)" if required else ""
+                            print(f"  • {prop}: {prop_type}{req_marker} - {description}")
                 return
                 
         # Validate arguments against schema if available
@@ -352,23 +542,29 @@ class MCPShell:
             
             print(f"\n✅ Tool '{tool_name}' result:")
             if hasattr(result, 'content') and result.content:
+                # Check if this tool returns JSON based on metadata
+                is_json_tool = False
+                if hasattr(tool, 'meta') and tool.meta and 'result_mime_type' in tool.meta:
+                    is_json_tool = tool.meta['result_mime_type'] == "application/json"
+                
                 for content in result.content:
                     if hasattr(content, 'type') and content.type == "text":
-                        print(content.text)
-                    elif hasattr(content, 'type') and content.type == "application/json":
-                        # Format JSON output with validation
-                        formatted = self._format_json_output(content.text, "application/json") 
-                        print(formatted)
-                        
-                        # Validate result against schema if available
-                        result_schema_key = f"{tool_name}:result"
-                        try:
-                            parsed_result = json.loads(content.text)
-                            warnings = self._validate_json_with_schema(parsed_result, result_schema_key)
-                            for warning in warnings:
-                                print(warning)
-                        except json.JSONDecodeError:
-                            print("⚠️  Response is not valid JSON")
+                        if is_json_tool:
+                            # This is JSON content even though type is "text"
+                            formatted = self._format_json_output(content.text, "application/json") 
+                            print(f"📄 JSON Response:\n{formatted}")
+                            
+                            # Validate result against schema if available
+                            result_schema_key = f"{tool_name}:result"
+                            try:
+                                parsed_result = json.loads(content.text)
+                                warnings = self._validate_json_with_schema(parsed_result, result_schema_key)
+                                for warning in warnings:
+                                    print(warning)
+                            except json.JSONDecodeError:
+                                print("⚠️  Response is not valid JSON")
+                        else:
+                            print(content.text)
                     else:
                         print(content)
             else:
