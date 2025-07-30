@@ -152,8 +152,9 @@ async def coverage_context(enable_coverage: bool = False) -> AsyncIterator[Optio
     if HAS_COVERAGE and enable_coverage:
         try:
             cov = coverage.Coverage()
-            cov.start()
-            logger.info("Coverage collection started")
+            if cov is not None:
+                cov.start()
+                logger.info("Coverage collection started")
         except Exception as e:
             logger.error(f"Failed to start coverage: {e}")
             cov = None
