@@ -114,10 +114,42 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
     # Tool endpoints
     @app.call_tool()
     async def greet_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        # Handle various argument types
         target_name = arguments.get("name", "World")
+        greeting = arguments.get("greeting", "Hello")
+        language = arguments.get("language", "en")
+        include_time = arguments.get("include_time", False)
+        user_info = arguments.get("user_info", {})
+        
+        # Build response based on arguments
+        message_parts = []
+        
+        # Greeting in different languages
+        greetings = {
+            "en": greeting,
+            "es": "Hola",
+            "fr": "Bonjour", 
+            "de": "Hallo"
+        }
+        
+        selected_greeting = greetings.get(language, greeting)
+        message_parts.append(f"{selected_greeting}, {target_name}!")
+        
+        # Add user info if provided
+        if user_info:
+            if "role" in user_info:
+                message_parts.append(f"Role: {user_info['role']}")
+            if "team" in user_info:
+                message_parts.append(f"Team: {user_info['team']}")
+        
+        # Add timestamp if requested
+        if include_time:
+            import datetime
+            message_parts.append(f"Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
         return [types.TextContent(
             type="text",
-            text=f"Hello, {target_name}!"
+            text="\n".join(message_parts)
         )]
 
     @app.list_tools()
@@ -125,13 +157,44 @@ def create_mcp_server(json_response: bool = False, enable_coverage: bool = False
         return [
             types.Tool(
                 name="example:greet",
-                description="Greet someone with a friendly message",
+                description="Greet someone with a customizable message in different languages",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "Name of the person to greet"
+                            "description": "Name of the person to greet",
+                            "default": "World"
+                        },
+                        "greeting": {
+                            "type": "string", 
+                            "description": "Custom greeting text (overridden by language setting)",
+                            "default": "Hello"
+                        },
+                        "language": {
+                            "type": "string",
+                            "description": "Language for greeting",
+                            "enum": ["en", "es", "fr", "de"],
+                            "default": "en"
+                        },
+                        "include_time": {
+                            "type": "boolean",
+                            "description": "Include current timestamp in response",
+                            "default": False
+                        },
+                        "user_info": {
+                            "type": "object",
+                            "description": "Additional user information to include",
+                            "properties": {
+                                "role": {
+                                    "type": "string",
+                                    "description": "User's role"
+                                },
+                                "team": {
+                                    "type": "string", 
+                                    "description": "User's team"
+                                }
+                            }
                         }
                     },
                     "required": []
