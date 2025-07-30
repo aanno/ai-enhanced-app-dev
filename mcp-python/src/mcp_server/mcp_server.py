@@ -11,7 +11,9 @@ import mcp.types as types
 from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.shared.exceptions import McpError
+from mcp.server.lowlevel.helper_types import ReadResourceContents
 from pydantic import AnyUrl
+from typing import List
 from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.types import Receive, Scope, Send
@@ -124,7 +126,7 @@ def create_mcp_server(json_response: bool = False) -> Starlette:
         ]
 
     @app.read_resource()
-    async def read_resource(uri: AnyUrl) -> str:
+    async def read_resource(uri: AnyUrl) -> List[ReadResourceContents]:
         # Parse the URI to get the resource name
         uri_str = str(uri)
         if uri_str.startswith("file:///"):
@@ -138,7 +140,10 @@ def create_mcp_server(json_response: bool = False) -> Starlette:
                 message=f"Resource not found: {uri_str}"
             ))
             
-        return SAMPLE_RESOURCES[name]["content"]
+        return [ReadResourceContents(
+            content=SAMPLE_RESOURCES[name]["content"],
+            mime_type="text/plain"
+        )]
 
     # Create session manager
     session_manager = StreamableHTTPSessionManager(
