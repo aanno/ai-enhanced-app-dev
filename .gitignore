@@ -3,6 +3,8 @@ __pycache__/
 /rust/target/
 /monkeytype.sqlite3
 /out/
+/mcp-python/.claude/settings.local.json
+/mcp-python/.mcp_shell_history
 .dmypy.json
 *.pyc
 *.log

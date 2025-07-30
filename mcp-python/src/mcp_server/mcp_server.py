@@ -10,6 +10,8 @@ from types import FrameType
 import mcp.types as types
 from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+from mcp.shared.exceptions import McpError
+from pydantic import AnyUrl
 from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.types import Receive, Scope, Send
@@ -77,36 +79,42 @@ async def graceful_shutdown(
 
 def create_mcp_server(json_response: bool = False) -> Starlette:
     """Create the MCP server application with both tools and resources"""
-    app = Server("mcp-server-with-coverage")
+    app: Server = Server("mcp-server-with-coverage")
 
     # Tool endpoints
-    @app.call_tool("example:greet")
-    async def greet_tool(request: types.ToolRequest) -> types.ToolResponse:
-        try:
-            params = json.loads(request.body.decode())
-            name = params.get("name", "World")
-            return types.ToolResponse(
-                status=200,
-                headers={},
-                body=f"Hello, {name}!".encode()
-            )
-        except json.JSONDecodeError:
-            return types.ToolResponse(
-                status=400,
-                headers={},
-                body=b"Invalid JSON input"
-            )
+    @app.call_tool()
+    async def greet_tool(name: str, arguments: Dict[str, Any]) -> List[types.TextContent]:
+        target_name = arguments.get("name", "World")
+        return [types.TextContent(
+            type="text",
+            text=f"Hello, {target_name}!"
+        )]
 
     @app.list_tools()
-    async def list_tools() -> Dict[str, List[str]]:
-        return {"tools": ["example:greet"]}
+    async def list_tools() -> List[types.Tool]:
+        return [
+            types.Tool(
+                name="example:greet",
+                description="Greet someone with a friendly message",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Name of the person to greet"
+                        }
+                    },
+                    "required": []
+                }
+            )
+        ]
 
     # Resource endpoints
     @app.list_resources()
     async def list_resources() -> List[types.Resource]:
         return [
             types.Resource(
-                uri=f"file:///{name}.txt",
+                uri=AnyUrl(f"file:///{name}.txt"),
                 name=name,
                 title=data["title"],
                 description=f"A sample text resource named {name}",
@@ -116,27 +124,21 @@ def create_mcp_server(json_response: bool = False) -> Starlette:
         ]
 
     @app.read_resource()
-    async def read_resource(request: types.ReadResourceRequest) -> types.ReadResourceResponse:
-        if request.uri.path is None:
-            return types.ReadResourceResponse(
-                status=404,
-                headers={},
-                body=b"Resource not found"
-            )
+    async def read_resource(uri: AnyUrl) -> str:
+        # Parse the URI to get the resource name
+        uri_str = str(uri)
+        if uri_str.startswith("file:///"):
+            name = uri_str.replace("file:///", "").replace(".txt", "")
+        else:
+            name = uri_str.replace(".txt", "").lstrip("/")
             
-        name = request.uri.path.replace(".txt", "").lstrip("/")
         if name not in SAMPLE_RESOURCES:
-            return types.ReadResourceResponse(
-                status=404,
-                headers={},
-                body=b"Resource not found"
-            )
+            raise McpError(types.ErrorData(
+                code=404,
+                message=f"Resource not found: {uri_str}"
+            ))
             
-        return types.ReadResourceResponse(
-            status=200,
-            headers={"Content-Type": "text/plain"},
-            body=SAMPLE_RESOURCES[name]["content"].encode()
-        )
+        return SAMPLE_RESOURCES[name]["content"]
 
     # Create session manager
     session_manager = StreamableHTTPSessionManager(
@@ -158,18 +160,17 @@ def create_mcp_server(json_response: bool = False) -> Starlette:
             # Set up signal handlers
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGTERM, signal.SIGINT):
-                loop.add_signal_handler(
-                    sig,
-                    lambda s=sig: asyncio.create_task(
-                        graceful_shutdown(app, cov, s)
-                    )
-                )
+                def signal_handler(s: int = sig) -> None:
+                    asyncio.create_task(graceful_shutdown(app, cov, s))
+                loop.add_signal_handler(sig, signal_handler)
             
             logger.info("Server started")
-            try:
-                yield
-            finally:
-                logger.info("Server shutting down...")
+            # Run the session manager
+            async with session_manager.run():
+                try:
+                    yield
+                finally:
+                    logger.info("Server shutting down...")
 
     return Starlette(
         debug=True,
