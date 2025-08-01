@@ -3,10 +3,12 @@
 ## blogs
 
 * https://blog.marcnuri.com/
+* https://symflower.com/en/company/blog/
 
 ## VS clones
 
 * [cursor](https://cursor.com/)
+* [kiro](https://kiro.dev/)
 
 ## Editoren (without VS code)
 
@@ -26,3 +28,7 @@
 * [claudia](https://github.com/getAsterisk/claudia)
   A powerful GUI app and Toolkit for Claude Code - Create custom agents, manage interactive Claude Code sessions, run secure background agents, and more
   + https://claudiacode.com/
+
+## LLM enhancement
+
+* [symflower](https://symflower.com/en/)
