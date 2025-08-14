@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import shlex
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, cast
 
@@ -41,8 +42,29 @@ class JSONCompleter(Completer):
         if not current_line.startswith('call '):
             return
 
-        # Extract the JSON part after tool name
-        parts = current_line.split(' ', 2)
+        # Extract the JSON part after tool name using proper quoted parsing
+        try:
+            # Handle special case for commands with JSON arguments
+            line = current_line.strip()
+            if '{' in line and '}' in line:
+                # Find the JSON part (from first { to last })
+                json_start = line.find('{')
+                json_end = line.rfind('}')
+                
+                if json_start > 0 and json_end > json_start:
+                    # Split the non-JSON part with shlex
+                    pre_json = line[:json_start].strip()
+                    json_part = line[json_start:json_end + 1]
+                    parts = shlex.split(pre_json)
+                    parts.append(json_part)
+                else:
+                    parts = shlex.split(current_line)
+            else:
+                parts = shlex.split(current_line)
+        except ValueError:
+            # If shlex fails, fall back to simple split
+            parts = current_line.split(' ', 2)
+        
         if len(parts) < 3:
             # We're right after the tool name - suggest opening JSON
             yield Completion('{', start_position=0)
@@ -228,6 +250,43 @@ class DynamicMCPCompleter(Completer):
     def __init__(self, shell: Any):
         self.shell = shell
 
+    def _parse_quoted_command(self, line: str, command: str) -> List[str]:
+        """Parse command line respecting quoted arguments with spaces."""
+        if not line.startswith(command):
+            return []
+        
+        # Handle special case for commands with JSON arguments
+        # Format: command "quoted-name" {...json...}
+        line_stripped = line.strip()
+        
+        # Check if line starts with call/read/tool-details and has JSON
+        if (line_stripped.startswith(('call ', 'read ', 'tool-details ')) and 
+            '{' in line_stripped and '}' in line_stripped):
+            
+            # Find the JSON part (from first { to last })
+            json_start = line_stripped.find('{')
+            json_end = line_stripped.rfind('}')
+            
+            if json_start > 0 and json_end > json_start:
+                # Split the non-JSON part with shlex
+                pre_json = line_stripped[:json_start].strip()
+                json_part = line_stripped[json_start:json_end + 1]
+                
+                try:
+                    parts = shlex.split(pre_json)
+                    parts.append(json_part)
+                    return parts
+                except ValueError:
+                    # Fall back to simple parsing
+                    pass
+        
+        # Default shlex parsing for other cases
+        try:
+            return shlex.split(line)
+        except ValueError:
+            # If shlex fails (e.g., unclosed quotes), fall back to simple split
+            return line.split()
+
     def get_completions(self, document: Document, complete_event: CompleteEvent):
         text = document.text_before_cursor
 
@@ -236,7 +295,7 @@ class DynamicMCPCompleter(Completer):
         current_line = lines[-1] if lines else ""
 
         if current_line.startswith('call '):
-            parts = current_line.split(' ', 2)
+            parts = self._parse_quoted_command(current_line, 'call ')
             if len(parts) >= 2:
                 tool_name = parts[1]
 
@@ -253,6 +312,45 @@ class DynamicMCPCompleter(Completer):
                         json_completer = JSONCompleter(schema)
                         yield from json_completer.get_completions(document, complete_event)
                         return
+
+        # Handle 'read' command with quoted resource names
+        if current_line.startswith('read '):
+            parts = self._parse_quoted_command(current_line, 'read ')
+            if len(parts) == 1:
+                # User just typed 'read ', suggest resource names (quoted if they contain spaces)
+                for resource in self.shell.resources:
+                    if ' ' in resource.name:
+                        # Suggest quoted name for resources with spaces
+                        yield Completion(f'"{resource.name}"', start_position=0)
+                    else:
+                        yield Completion(resource.name, start_position=0)
+                return
+
+        # Handle 'call' command with quoted tool names  
+        if current_line.startswith('call '):
+            parts = self._parse_quoted_command(current_line, 'call ')
+            if len(parts) == 1:
+                # User just typed 'call ', suggest tool names (quoted if they contain spaces)
+                for tool in self.shell.tools:
+                    if ' ' in tool.name:
+                        # Suggest quoted name for tools with spaces
+                        yield Completion(f'"{tool.name}"', start_position=0)
+                    else:
+                        yield Completion(tool.name, start_position=0)
+                return
+
+        # Handle 'tool-details' command with quoted tool names
+        if current_line.startswith('tool-details '):
+            parts = self._parse_quoted_command(current_line, 'tool-details ')
+            if len(parts) == 1:
+                # User just typed 'tool-details ', suggest tool names (quoted if they contain spaces)
+                for tool in self.shell.tools:
+                    if ' ' in tool.name:
+                        # Suggest quoted name for tools with spaces
+                        yield Completion(f'"{tool.name}"', start_position=0)
+                    else:
+                        yield Completion(tool.name, start_position=0)
+                return
 
         # Default command completion
         completions = list(self.shell.commands.keys())

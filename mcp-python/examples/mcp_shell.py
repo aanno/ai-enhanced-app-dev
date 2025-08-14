@@ -9,6 +9,7 @@ and provides commands to list tools/resources and call them interactively.
 import asyncio
 import json
 import logging
+import shlex
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, cast
 
@@ -65,6 +66,7 @@ class MCPShell:
             'list': self._cmd_list,
             'tools': self._cmd_list_tools,
             'resources': self._cmd_list_resources,
+            'tool-details': self._cmd_tool_details,
             'call': self._cmd_call_tool,
             'read': self._cmd_read_resource,
             'exit': self._cmd_exit,
@@ -270,13 +272,50 @@ class MCPShell:
                 print(f"❌ Error: {e}")
                 logger.exception("Shell command error")
 
+    def _parse_command_with_quotes(self, command_line: str) -> List[str]:
+        """Parse command line respecting quoted arguments with spaces."""
+        if not command_line.strip():
+            return []
+        
+        # Handle special case for commands with JSON arguments
+        # Format: command "quoted-name" {...json...}
+        line = command_line.strip()
+        
+        # Check if line starts with call/read/tool-details and has JSON
+        if (line.startswith(('call ', 'read ', 'tool-details ')) and 
+            '{' in line and '}' in line):
+            
+            # Find the JSON part (from first { to last })
+            json_start = line.find('{')
+            json_end = line.rfind('}')
+            
+            if json_start > 0 and json_end > json_start:
+                # Split the non-JSON part with shlex
+                pre_json = line[:json_start].strip()
+                json_part = line[json_start:json_end + 1]
+                
+                try:
+                    parts = shlex.split(pre_json)
+                    parts.append(json_part)
+                    return parts
+                except ValueError:
+                    # Fall back to simple parsing
+                    pass
+        
+        # Default shlex parsing for other cases
+        try:
+            return shlex.split(command_line)
+        except ValueError:
+            # If shlex fails (e.g., unclosed quotes), fall back to simple split
+            return command_line.split()
+
     async def _process_command(self, command_line: str) -> None:
         """Process a command line input."""
         if not command_line:
             return
 
-        parts = command_line.split()
-        command = parts[0].lower()
+        parts = self._parse_command_with_quotes(command_line)
+        command = parts[0].lower() if parts else ""
         args = parts[1:] if len(parts) > 1 else []
 
         if command in self.commands:
@@ -298,6 +337,7 @@ class MCPShell:
         print("  list                    - List all tools and resources")
         print("  tools                   - List available tools only")
         print("  resources               - List available resources only")
+        print("  tool-details <tool>     - Show detailed schema info for a tool")
         print("  call <tool> [args...]   - Call a tool with JSON arguments")
         print("  read <resource>         - Read a resource")
         print("  exit, quit              - Exit the shell")
@@ -599,6 +639,72 @@ class MCPShell:
         except Exception as e:
             print(f"❌ Failed to read resource '{resource_name}': {e}")
             logger.exception(f"Resource read failed: {resource_name}")
+
+    async def _cmd_tool_details(self, args: List[str]) -> None:
+        """Show detailed schema information for a tool."""
+        if not args:
+            print("❌ Usage: tool-details <tool_name>")
+            print("Example: tool-details example:greet")
+            return
+
+        tool_name = args[0]
+
+        # Check if tool exists
+        tool = next((t for t in self.tools if t.name == tool_name), None)
+        if not tool:
+            print(f"❌ Unknown tool: {tool_name}")
+            print("Use 'tools' command to see available tools.")
+            return
+
+        print(f"\n🔧 Tool Details: {tool_name}")
+        print("=" * (len(tool_name) + 15))
+
+        if tool.description:
+            print(f"📄 Description: {tool.description}")
+
+        # Show metadata info
+        tool_data = tool.model_dump()
+        meta = tool_data.get('meta')
+        if meta:
+            print(f"\n📊 Metadata:")
+            if 'result_mime_type' in meta:
+                print(f"  • Result MIME type: {meta['result_mime_type']}")
+            if 'args_schema_resource' in meta:
+                print(f"  • Args schema resource: {meta['args_schema_resource']}")
+            if 'result_schema_resource' in meta:
+                print(f"  • Result schema resource: {meta['result_schema_resource']}")
+
+        # Show input schema
+        if hasattr(tool, 'inputSchema') and tool.inputSchema:
+            print(f"\n📥 Input Schema:")
+            formatted_schema = self._format_json_output(json.dumps(tool.inputSchema, indent=2))
+            print(formatted_schema)
+        else:
+            print(f"\n📥 Input Schema: Not available")
+
+        # Show cached args schema from resources if available
+        args_schema_key = f"{tool_name}:args"
+        if args_schema_key in self.schemas:
+            print(f"\n📋 Arguments Schema (from resource):")
+            formatted_schema = self._format_json_output(json.dumps(self.schemas[args_schema_key], indent=2))
+            print(formatted_schema)
+
+        # Show output schema
+        if hasattr(tool, 'outputSchema') and tool.outputSchema:
+            print(f"\n📤 Output Schema:")
+            formatted_schema = self._format_json_output(json.dumps(tool.outputSchema, indent=2))
+            print(formatted_schema)
+        else:
+            print(f"\n📤 Output Schema: Not available")
+
+        # Show cached result schema from resources if available
+        result_schema_key = f"{tool_name}:result"
+        if result_schema_key in self.schemas:
+            print(f"\n📋 Result Schema (from resource):")
+            formatted_schema = self._format_json_output(json.dumps(self.schemas[result_schema_key], indent=2))
+            print(formatted_schema)
+
+        print()
 
     async def _cmd_exit(self, args: List[str]) -> None:
         """Exit the shell."""
