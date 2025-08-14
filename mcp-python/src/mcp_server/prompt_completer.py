@@ -44,17 +44,17 @@ class JSONCompleter(Completer):
 
         # Extract the JSON part after tool name using proper quoted parsing
         try:
-            # Handle special case for commands with JSON arguments
+            # Handle special case for commands with JSON arguments (complete or partial)
             line = current_line.strip()
-            if '{' in line and '}' in line:
-                # Find the JSON part (from first { to last })
+            if '{' in line:
+                # Find the JSON part (from first { to end of line or last })
                 json_start = line.find('{')
-                json_end = line.rfind('}')
+                json_end = line.rfind('}') if '}' in line else len(line)
                 
-                if json_start > 0 and json_end > json_start:
+                if json_start > 0:
                     # Split the non-JSON part with shlex
                     pre_json = line[:json_start].strip()
-                    json_part = line[json_start:json_end + 1]
+                    json_part = line[json_start:json_end + (1 if '}' in line else 0)]
                     parts = shlex.split(pre_json)
                     parts.append(json_part)
                 else:
@@ -70,20 +70,7 @@ class JSONCompleter(Completer):
             yield Completion('{', start_position=0)
             yield Completion('{}', start_position=0)
             yield Completion('{"', start_position=0)
-            return
-
-        json_part = parts[2]
-
-        # Analyze JSON context
-        yield from self._provide_json_completions(json_part, document)
-
-    def _provide_json_completions(self, json_part: str, document: Document):
-        """Provide contextual JSON completions."""
-
-        # If empty or just whitespace, suggest object start
-        if not json_part.strip():
-            yield Completion('{', start_position=0)
-            yield Completion('{}', start_position=0)
+            
             # Add schema-based completion if available
             if self.schema and 'properties' in self.schema:
                 required_props = self.schema.get('required', [])
@@ -102,7 +89,21 @@ class JSONCompleter(Completer):
 
                     if required_json_parts:
                         json_template = '{ ' + ', '.join(required_json_parts) + ' }'
-                        yield Completion(json_template, start_position=0, display=f"Template with required fields")
+                        yield Completion(json_template, start_position=0, display="Template with required fields")
+            return
+
+        json_part = parts[2]
+
+        # Analyze JSON context
+        yield from self._provide_json_completions(json_part, document)
+
+    def _provide_json_completions(self, json_part: str, document: Document):
+        """Provide contextual JSON completions."""
+
+        # If empty or just whitespace, suggest object start
+        if not json_part.strip():
+            yield Completion('{', start_position=0)
+            yield Completion('{}', start_position=0)
             return
 
         # If we have an opening brace but no closing, suggest properties

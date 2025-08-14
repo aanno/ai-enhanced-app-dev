@@ -19,15 +19,20 @@ class MCPTestClient:
 
     async def connect(self):
         """Connect to the MCP server"""
-        self._client_context = streamablehttp_client(
-            url=self.server_url,
-            timeout=timedelta(seconds=30)
-        )
-        read_stream, write_stream, get_session_id = await self._client_context.__aenter__()
-        
-        self._session_context = ClientSession(read_stream, write_stream)
-        self.session = await self._session_context.__aenter__()
-        await self.session.initialize()
+        try:
+            self._client_context = streamablehttp_client(
+                url=self.server_url,
+                timeout=timedelta(seconds=10)  # Reduced timeout
+            )
+            read_stream, write_stream, get_session_id = await self._client_context.__aenter__()
+            
+            self._session_context = ClientSession(read_stream, write_stream)
+            self.session = await self._session_context.__aenter__()
+            await self.session.initialize()
+        except Exception as e:
+            # Clean up on connection failure
+            await self.close()
+            raise ConnectionError(f"Failed to connect to MCP server at {self.server_url}: {e}") from e
 
     async def close(self):
         """Close the connection"""

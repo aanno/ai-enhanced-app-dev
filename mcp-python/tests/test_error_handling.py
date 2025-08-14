@@ -2,17 +2,14 @@
 
 import pytest
 import pytest_asyncio
-from mcp_client import MCPTestClient
-
-# Server connection parameters
-SERVER_HOST = "127.0.0.1"
-SERVER_PORT = 8002
+from .mcp_client import MCPTestClient
+from .conftest import MCP_TEST_HOST, MCP_TEST_PORT
 
 
 @pytest_asyncio.fixture
 async def mcp_client():
     """Fixture providing a test client connected to the server"""
-    async with MCPTestClient(SERVER_HOST, SERVER_PORT) as client:
+    async with MCPTestClient(MCP_TEST_HOST, MCP_TEST_PORT) as client:
         yield client
 
 
