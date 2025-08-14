@@ -18,12 +18,28 @@
 
 * https://trysixth.com/ commercial
   vs code
+  + more info: vs code -> sixth icon (left) -> help
+  + inline, chat, composer (multi file) chat, terminal chat
+  + includes RAG indexing
+  + has built in MCP support, i.e. able to use MCP server (works as MCP client)
 * https://cline.bot/
   vs code, vs code insiders, cursor, windsurf
   + https://github.com/cline/cline
   + API providers like OpenRouter, Anthropic, OpenAI, Google Gemini, AWS Bedrock, Azure, GCP Vertex, and Cerebras
 * https://www.augmentcode.com/ commercial
   vs code, jetbrains
+* [sourcery](https://sourcery.ai/) commercial
+  AI code reviewer that finds bugs, improves quality
+  + integrated with vs code, github, gitlab
+  + own dashboard at https://app.sourcery.ai
+  + difficult to use without PR (extremly PR centered, no manual triggers), see https://docs.sourcery.ai/Code-Review/
+  + code assistant for vs code, see https://docs.sourcery.ai/Coding-Assistant/
+    - able to create diagrams (sequence, class, flow)
+  + [Sentinel](https://docs.sourcery.ai/Sentinel/getting-started/)
+    Sourcery's AI agent for fixing production issues
+    - currently in invited beta
+    - integrated (based on?) [sentry](https://sentry.io/welcome/)
+
 
 ## vs code forks
 
