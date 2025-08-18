@@ -47,7 +47,7 @@
 
 ## LLM proxies
 
-* [LiteLLM](https://github.com/BerriAI/litellm)
+* [LiteLLM](https://github.com/BerriAI/litellm)su
   Python SDK, Proxy Server (LLM Gateway) to call 100+ LLM APIs in OpenAI format - [Bedrock, Azure, OpenAI, VertexAI, Cohere, Anthropic, Sagemaker, HuggingFace, Replicate, Groq] 
   + https://docs.litellm.ai/docs/
   + https://www.litellm.ai
