@@ -16,3 +16,13 @@
     - Digital-first customer service, enterprise-scale voice support
     - Redefine customer service with an AI-powered platform
     - unifies voice, digital and social channels
+
+# GTM (go to market), sales, marketing
+
+* [explorium](https://www.explorium.ai/)
+  B2B data and infrastructure
+  + Contact Information
+  + Company's Website Changes
+  + Firmographics
+  + https://developers.explorium.ai/reference/quick-starts
+  + [mcp-explorium](https://github.com/supercorp-ai/mcp-explorium)
