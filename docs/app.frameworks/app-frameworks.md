@@ -45,3 +45,8 @@
   open-source agent orchestration framework built on top of the latest OpenAI Assistants API
   + https://github.com/VRSEN/agency-swarm
   + [openAI Assistants API](https://platform.openai.com/docs/assistants/overview/agents)
+* [vellum](https://www.vellum.ai)
+  The platform for building enterprise grade AI agents
+  + VERY expensive outside the free tier
+  + complete solution: develop, deploy, monitor
+  

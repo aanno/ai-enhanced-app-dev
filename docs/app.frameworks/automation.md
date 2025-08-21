@@ -5,6 +5,9 @@
 * [n8n](https://n8n.io/) partly commercial, typescript
   Flexible AI workflow automation for technical teams, drag and drop
   + https://github.com/n8n-io/n8n basic open source, for self-hosting
+  + [n8n community](https://community.n8n.io/top?period=daily)
+  + [free workflows](https://n8n.io/workflows/)
+  + [n8n cloud](https://aanno.app.n8n.cloud) payed SaaS
 * [make](https://www.make.com/en) partly commercial
   Automation you can see, flex, and scale
   + limited for AI
