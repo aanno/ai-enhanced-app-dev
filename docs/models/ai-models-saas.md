@@ -17,3 +17,9 @@
   + [Billing](https://console.cloud.google.com/billing/)
 * [deepseek](https://platform.deepseek.com/usage)
 * [perplexity](https://www.perplexity.ai/account/api/group)
+* [groq](https://groq.com)
+  Infrastructure For Inference
+  + Run large LLMs cheap
+  + [pay per use](https://groq.com/pricing)
+  + https://console.groq.com
+  + [groq status](https://groqstatus.com/)
