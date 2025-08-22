@@ -31,3 +31,13 @@
       Provide arguments to any MCP server during interaction with assistant instead of during initial setup
     - [memory-mcp](https://github.com/supercorp-ai/memory-mcp)
     - [gmail-mcp](https://github.com/supercorp-ai/gmail-mcp)
+
+## Basics
+
+### Embeddings
+
+* [What are Embeddings in Machine Learning](https://aws.amazon.com/what-is/embeddings-in-machine-learning/?nc1=h_ls)
+
+### RAG
+
+* [What Is RAG](https://blogs.nvidia.com/blog/what-is-retrieval-augmented-generation/)

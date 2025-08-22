@@ -8,13 +8,14 @@
 ## VS clones
 
 * [cursor](https://cursor.com/)
+  + [Cursor Docs](https://docs.cursor.com/en/welcome)
 * [kiro](https://kiro.dev/)
+* [windsurf](https://windsurf.com/)
+  + Has own extension for devcontainers which does not work with my images
 
 ## Editoren (without VS code)
 
 * [continue](https://www.continue.dev/)
-* [windsurf](https://windsurf.com/)
-
 ## AI coding
 
 * [Claude Code](https://www.anthropic.com/claude-code) featured!
@@ -86,6 +87,15 @@ These offer are extremely interesting also because of their integrations, suppor
   - https://render.com/docs
 * [vercel](https://vercel.com/)
   Build and deploy on the AI Cloud
+
+#### reproducible developer environments (like devcontainers)
+
+* [devpod](https://devpod.sh/)
+  open source, client only, unopinionated
+  + https://devpod.sh/docs/what-is-devpod
+  + https://github.com/loft-sh/devpod
+  + [articles](https://www.vcluster.com/tags/devpod)
+  + from https://www.vcluster.com/ - Kubernetes as SaaS
 
 ### Infrastructure
 
