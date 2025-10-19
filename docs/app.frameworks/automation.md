@@ -26,3 +26,10 @@
   + VERY expensive commercial offer
   + https://github.com/crewAIInc/crewAI python
     Framework for orchestrating role-playing, autonomous AI agents
+
+## Orchestration
+
+* [camunda](https://camunda.com/de/)
+  commercial platform for workflow and decision automation
+* [axon ivy](https://www.axonivy.com/de/)
+  advanced AI with powerful orchestration to streamline your business
