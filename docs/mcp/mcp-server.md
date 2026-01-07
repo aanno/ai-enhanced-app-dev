@@ -19,6 +19,10 @@
 * [Sequential Thinking MCP Server](https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking)
   dynamic and reflective problem-solving through a structured thinking process
 
+## Special Apps
+
+* [linkwarden](https://github.com/irfansofyana/linkwarden-mcp-server)
+
 ## Browser
 
 ATTENTION:
