@@ -1,0 +1,24 @@
+# https://github.com/doobidoo/mcp-memory-service/blob/main/docs/remote-mcp-setup.md
+# docker-compose.yml
+services:
+  mcp-memory:
+    image: ghcr.io/doobidoo/mcp-memory-service:latest
+    environment:
+      - MCP_STREAMABLE_HTTP_MODE=1
+      - MCP_SSE_HOST=0.0.0.0
+      - MCP_SSE_PORT=8765
+      - MCP_OAUTH_ENABLED=true
+      - MCP_OAUTH_STORAGE_BACKEND=sqlite
+      - MCP_OAUTH_SQLITE_PATH=/data/oauth.db
+      - MCP_MEMORY_STORAGE_BACKEND=sqlite_vec
+      - MCP_MEMORY_SQLITE_PRAGMAS=journal_mode=WAL,busy_timeout=15000
+    ports:
+      - "8765:8765"
+    volumes:
+      - doobidoo-data:/data:z
+    restart: unless-stopped
+
+volumes:
+  doobidoo-data:
+networks:
+  doobidoo:
