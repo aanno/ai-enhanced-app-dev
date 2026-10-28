@@ -7,7 +7,10 @@ services:
       - MCP_STREAMABLE_HTTP_MODE=1
       - MCP_SSE_HOST=0.0.0.0
       - MCP_SSE_PORT=8765
-      - MCP_OAUTH_ENABLED=true
+      # difficult to get right another container (tp)
+      # - MCP_OAUTH_ENABLED=true
+      # insecure (tp)
+      - MCP_ALLOW_ANONYMOUS_ACCESS=true
       - MCP_OAUTH_STORAGE_BACKEND=sqlite
       - MCP_OAUTH_SQLITE_PATH=/data/oauth.db
       - MCP_MEMORY_STORAGE_BACKEND=sqlite_vec
