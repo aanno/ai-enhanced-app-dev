@@ -1,5 +1,8 @@
 # https://github.com/doobidoo/mcp-memory-service/blob/main/docs/remote-mcp-setup.md
 # docker-compose.yml
+#
+# images:
+# https://github.com/doobidoo/mcp-memory-service/blob/main/docs/docker-optimized-build.md
 services:
   mcp-memory:
     image: ghcr.io/doobidoo/mcp-memory-service:latest
@@ -11,12 +14,16 @@ services:
       # - MCP_OAUTH_ENABLED=true
       # insecure (tp)
       - MCP_ALLOW_ANONYMOUS_ACCESS=true
+      # not really secure (but better) (tp)
+      # All REST API requests then require Authorization: Bearer your-secure-key-here
+      # - MCP_API_KEY=your-secure-key-here
       - MCP_OAUTH_STORAGE_BACKEND=sqlite
       - MCP_OAUTH_SQLITE_PATH=/data/oauth.db
       - MCP_MEMORY_STORAGE_BACKEND=sqlite_vec
       - MCP_MEMORY_SQLITE_PRAGMAS=journal_mode=WAL,busy_timeout=15000
     ports:
       - "8765:8765"
+      - "8000:8000"
     volumes:
       - doobidoo-data:/data:z
     restart: unless-stopped
